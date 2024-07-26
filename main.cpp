@@ -2,6 +2,7 @@
 #include <boost/beast/http.hpp>
 #include <boost/asio.hpp>
 #include <boost/config.hpp>
+#include <boost/json/src.hpp>
 #include <algorithm>
 #include <cstdlib>
 #include <functional>
@@ -13,11 +14,40 @@
 #include <unordered_map>
 #include <random>
 #include <ctime>
-
+#include <nlohmann/json.hpp>
 namespace beast = boost::beast;
 namespace http = beast::http;
 namespace net = boost::asio;
 using tcp = boost::asio::ip::tcp;
+using json = nlohmann::json; 
+
+struct User {
+    int id;
+    std::string username;
+    std::string password;
+};
+
+class UserService {
+    private:
+        std::vector<User> users;
+    public:
+        void add_user(User user) { 
+            users.emplace_back(user); 
+            std::cout << "add_user " << user.id << " " << user.username  << std::endl;
+        }
+        int get_users_size() { return users.size(); }
+};
+
+class Application {
+    private:
+        std::shared_ptr<UserService> user_service;
+    public:
+        Application() : user_service(std::make_shared<UserService>()) {
+            std::cout << "Application() constructor" << std::endl;
+        }
+        std::shared_ptr<UserService> get_user_service() const { return user_service; }
+        virtual ~Application() = default;
+};
 
 
 // Determine MIME type based on file extension
@@ -79,58 +109,61 @@ path_cat(
 
 // Handle HTTP requests and generate appropriate responses
 template <class Body, class Allocator>
-http::message_generator handle_request(beast::string_view doc_root, http::request<Body, http::basic_fields<Allocator>>&& req) {
-    auto const bad_request = [&req](beast::string_view why) {
-        http::response<http::string_body> res{http::status::bad_request, req.version()};
+http::message_generator handle_request(beast::string_view doc_root, http::request<Body, http::basic_fields<Allocator>>&& req, std::shared_ptr<Application> app) {
+    std::map<std::string, http::status> statusMap = {
+        {"bad", http::status::bad_request},
+        {"not_found", http::status::not_found},
+        {"server_error", http::status::internal_server_error},
+        {"ok_request", http::status::ok}};
+    auto const res_map = [&req, &statusMap](std::string which,
+            beast::string_view str) {
+        auto status = statusMap[which];
+        http::response<http::string_body> res{status, req.version()};
         res.set(http::field::server, BOOST_BEAST_DEPRECATION_STRING);
         res.set(http::field::content_type, "text/html");
         res.keep_alive(req.keep_alive());
-        res.body() = std::string(why);
+        res.body() = std::string(str);
         res.prepare_payload();
         return res;
-    };
-
-    auto const not_found = [&req](beast::string_view target) {
-        http::response<http::string_body> res{http::status::not_found, req.version()};
-        res.set(http::field::server, BOOST_BEAST_DEPRECATION_STRING);
-        res.set(http::field::content_type, "text/html");
-        res.keep_alive(req.keep_alive());
-        res.body() = "The resource '" + std::string(target) + "' was not found.";
-        res.prepare_payload();
-        return res;
-    };
-
-    auto const server_error = [&req](beast::string_view what) {
-        http::response<http::string_body> res{http::status::internal_server_error, req.version()};
-        res.set(http::field::server, BOOST_BEAST_DEPRECATION_STRING);
-        res.set(http::field::content_type, "text/html");
-        res.keep_alive(req.keep_alive());
-        res.body() = "An error occurred: '" + std::string(what) + "'";
-        res.prepare_payload();
-        return res;
-    };
-
-
+    };    
+    if (req.method() == http::verb::post) {
+        if (req.target() == "/register") {
+            try {
+                json req_ = json::parse(req.body());
+                User user_;
+                user_.username = req_["username"];
+                user_.password = req_["password"];
+                auto user_service = app->get_user_service();
+                user_.id = user_service->get_users_size(); 
+                user_service->add_user(user_);
+                return res_map("ok_request", "User registered successfully");
+            } catch (const std::exception &e) {
+                return res_map("server_error", e.what());
+            }
+        }
+    }
 
     if (req.method() != http::verb::get && req.method() != http::verb::head)
-        return bad_request("Unknown HTTP-method");
+        return res_map("bad_request", "Unknown HTTP-method");
 
     if (req.target().empty() || req.target()[0] != '/' || req.target().find("..") != beast::string_view::npos)
-        return bad_request("Illegal request-target");
-
+        return res_map("bad_request", "Illegal request-target");
     std::string path = path_cat(doc_root, req.target());
-    if (req.target().back() == '/')
-        path.append("index.html");
+    if (req.method() == http::verb::get) {
+        if (req.target().back() == '/')
+            path.append("index.html");  
+    }
 
     beast::error_code ec;
     http::file_body::value_type body;
+    std::string msg = "";
     body.open(path.c_str(), beast::file_mode::scan, ec);
-
-    if (ec == beast::errc::no_such_file_or_directory)
-        return not_found(req.target());
-
+    if (ec == beast::errc::no_such_file_or_directory) {
+        msg = std::string(req.target()) + " not found";
+        return res_map("not_found", msg);
+    }
     if (ec)
-        return server_error(ec.message());
+        return res_map("server_error", ec.message()); 
 
     auto const size = body.size();
 
@@ -163,10 +196,10 @@ class session : public std::enable_shared_from_this<session> {
     beast::flat_buffer buffer_;
     std::shared_ptr<std::string const> doc_root_;
     http::request<http::string_body> req_;
-
+    std::shared_ptr<Application> app_;
     public:
-    session(tcp::socket&& socket, std::shared_ptr<std::string const> const& doc_root)
-        : stream_(std::move(socket)), doc_root_(doc_root) {}
+    session(tcp::socket&& socket, std::shared_ptr<std::string const> const& doc_root, std::shared_ptr<Application> app)
+        : stream_(std::move(socket)), doc_root_(doc_root), app_(app) {}
 
     void run() {
         net::dispatch(stream_.get_executor(), beast::bind_front_handler(&session::do_read, shared_from_this()));
@@ -186,7 +219,7 @@ class session : public std::enable_shared_from_this<session> {
         if (ec)
             return fail(ec, "read");
 
-        send_response(handle_request(*doc_root_, std::move(req_)));
+        send_response(handle_request(*doc_root_, std::move(req_), app_));
     }
 
     void send_response(http::message_generator&& msg) {
@@ -215,10 +248,10 @@ class listener : public std::enable_shared_from_this<listener> {
     net::io_context& ioc_;
     tcp::acceptor acceptor_;
     std::shared_ptr<std::string const> doc_root_;
-
+    std::shared_ptr<Application> app_;
     public:
-    listener(net::io_context& ioc, tcp::endpoint endpoint, std::shared_ptr<std::string const> const& doc_root)
-        : ioc_(ioc), acceptor_(net::make_strand(ioc)), doc_root_(doc_root) {
+    listener(net::io_context& ioc, tcp::endpoint endpoint, std::shared_ptr<std::string const> const& doc_root, std::shared_ptr<Application> app)
+        : ioc_(ioc), acceptor_(net::make_strand(ioc)), doc_root_(doc_root), app_(app) {
             beast::error_code ec;
             acceptor_.open(endpoint.protocol(), ec);
             if (ec) { fail(ec, "open"); return; }
@@ -247,7 +280,7 @@ class listener : public std::enable_shared_from_this<listener> {
             fail(ec, "accept");
             return;
         }
-        std::make_shared<session>(std::move(socket), doc_root_)->run();
+        std::make_shared<session>(std::move(socket), doc_root_, app_)->run();
         do_accept();
     }
 };
@@ -265,10 +298,10 @@ int main(int argc, char* argv[]) {
     auto const port = static_cast<unsigned short>(std::atoi(argv[2]));
     auto const doc_root = std::make_shared<std::string>(argv[3]);
     auto const threads = std::max<int>(1, std::atoi(argv[4]));
-
+    auto const app = std::make_shared<Application>();
     net::io_context ioc{threads};
 
-    std::make_shared<listener>(ioc, tcp::endpoint{address, port}, doc_root)->run();
+    std::make_shared<listener>(ioc, tcp::endpoint{address, port}, doc_root, app)->run();
 
     std::vector<std::thread> v;
     v.reserve(threads - 1);
