@@ -22,9 +22,17 @@ using tcp = boost::asio::ip::tcp;
 using json = nlohmann::json; 
 
 struct User {
-    int id;
-    std::string username;
-    std::string password;
+    private:
+        int id;
+        std::string username;
+        std::string password;
+    public:
+        void set_id(int id_) { id = id_; }
+        void set_username(std::string username_) { username = username_; }
+        void set_password(std::string password_) { password = password_; }
+        std::string get_username() { return username; }
+        std::string get_password() { return password; }
+        int get_id() { return id; }
 };
 
 class UserService {
@@ -33,9 +41,18 @@ class UserService {
     public:
         void add_user(User user) { 
             users.emplace_back(user); 
-            std::cout << "add_user " << user.id << " " << user.username  << std::endl;
+            std::cout << "add_user\n id: " << user.get_id() << " " << user.get_username() << " " << user.get_password()  << std::endl;
         }
         int get_users_size() { return users.size(); }
+
+        bool validate_login(const std::string username, const std::string password) {
+            for (int i = 0; i < users.size() + 1; i++) {
+                if (users.at(i).get_username() == username) {
+                    return true;
+                }
+            }
+            return false;
+        }
 };
 
 class Application {
@@ -131,12 +148,25 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
             try {
                 json req_ = json::parse(req.body());
                 User user_;
-                user_.username = req_["username"];
-                user_.password = req_["password"];
+                user_.set_username(req_["username"]);
+                user_.set_password(req_["password"]);
                 auto user_service = app->get_user_service();
-                user_.id = user_service->get_users_size(); 
+                user_.set_id(user_service->get_users_size()); 
                 user_service->add_user(user_);
                 return res_map("ok_request", "User registered successfully");
+            } catch (const std::exception &e) {
+                return res_map("server_error", e.what());
+            }
+        }
+        if (req.target() == "/login") {
+            try {
+                json req_ = json::parse(req.body());
+                auto user_service = app->get_user_service();
+                if(user_service->validate_login(req_["username"], req_["password"]))
+                    return res_map("ok_request", "user logged in successfully");
+                else
+                    return res_map("server_error", "invalid login");
+
             } catch (const std::exception &e) {
                 return res_map("server_error", e.what());
             }
