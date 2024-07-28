@@ -7,15 +7,21 @@
  % ./test
 HTTP/1.1 200 OK
 Server: This is a deprecated interface, #define BOOST_BEAST_ALLOW_DEPRECATED to allow it
-Content-Type: text/html
+Content-Type: application/json
 Content-Length: 28
 
 User registered successfully
 HTTP/1.1 200 OK
 Server: This is a deprecated interface, #define BOOST_BEAST_ALLOW_DEPRECATED to allow it
-Content-Type: text/html
-Content-Length: 27
+Content-Type: application/json
+Content-Length: 50
 
-user logged in successfully
+{"session_id":"RAydfEXlsLqGea4n","success":"true"}
+HTTP/1.1 200 OK
+Server: This is a deprecated interface, #define BOOST_BEAST_ALLOW_DEPRECATED to allow it
+Content-Type: application/json
+Content-Length: 36
+
+Access granted to protected resource
 ```
 
