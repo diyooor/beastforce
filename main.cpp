@@ -40,7 +40,7 @@ struct Session {
         std::string get_session_id() { return session_id; }
 };
 
-struct User {
+class User {
     private:
         int id;
         std::string username;
@@ -51,10 +51,10 @@ struct User {
         void set_username(std::string username_) { username = username_; }
         void set_password(std::string password_) { password = password_; }
         void set_session(Session session_) { session = session_; }
-        int get_id() { return id; }
-        std::string get_username() { return username; }
-        std::string get_password() { return password; }
-        Session get_session() { return session; }       
+        int get_id() const { return id; }
+        std::string get_username() const { return username; }
+        std::string get_password() const { return password; }
+        Session get_session() const { return session; }       
         void generate_session_id() {
             std::string chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
             std::mt19937 gen(static_cast<unsigned long>(time(0)));
@@ -74,11 +74,11 @@ class UserService {
     public:
         void add_user(User user) {
             users.emplace_back(user); 
-            std::cout << "add_user\n id: " << user.get_id() << " " << user.get_username() << " " << user.get_password()  << std::endl;
+            std::cout << user.get_id() << " " << user.get_username() << " " << user.get_password() << std::endl;
         }
-        int get_users_size() { return users.size(); }
+        int get_users_size() const { return users.size(); }
 
-        bool validate_login(const std::string username, const std::string password) {
+        bool validate_login(const std::string& username, const std::string& password) {
             for (int i = 0; i < users.size(); i++) {
                 if (users.at(i).get_username() == username && users.at(i).get_password() == password) {
                     users.at(i).generate_session_id();
@@ -88,6 +88,15 @@ class UserService {
                 }
             }
             return false;
+        }
+
+        std::string get_session_id(const std::string& username) const {
+            for (const auto& user : users) {
+                if (user.get_username() == username) {
+                    return user.get_session().get_session_id();
+                }
+            }
+            return "";
         }
 };
 
@@ -174,7 +183,7 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
         http::response<http::string_body> res{status, req.version()};
         res.set(http::field::server, BOOST_BEAST_DEPRECATION_STRING);
         // Maybe change this to application/json so I can pass back the session ID upon successful login
-        res.set(http::field::content_type, "text/html");
+        res.set(http::field::content_type, "application/json");
         res.keep_alive(req.keep_alive());
         res.body() = std::string(str);
         res.prepare_payload();
@@ -199,11 +208,16 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
             try {
                 json req_ = json::parse(req.body());
                 auto user_service = app->get_user_service();
-                if(user_service->validate_login(req_["username"], req_["password"]))
-                    return res_map("ok_request", "user logged in successfully");
-                else
+                if (user_service->validate_login(req_["username"], req_["password"])) {
+                    std::string session_id = user_service->get_session_id(req_["username"]);
+                    json response;
+                    response["success"] = "true";
+                    response["session_id"] = session_id;
+                    std::string t = response.dump();  // Convert JSON object to string
+                    return res_map("ok_request", t);
+                } else {
                     return res_map("server_error", "invalid login");
-
+                }
             } catch (const std::exception &e) {
                 return res_map("server_error", e.what());
             }
