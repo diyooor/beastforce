@@ -15,14 +15,20 @@
 #include <random>
 #include <ctime>
 #include <nlohmann/json.hpp>
-
-#define BOOST_BEAST_ALLOW_DEPRECATED
+#include <atomic>
 
 namespace beast = boost::beast;
 namespace http = beast::http;
 namespace net = boost::asio;
 using tcp = boost::asio::ip::tcp;
 using json = nlohmann::json; 
+
+std::atomic<int> active_connections(0);
+std::atomic<int> total_requests(0);
+std::chrono::time_point<std::chrono::steady_clock> start_time = std::chrono::steady_clock::now();
+/*
+ * Cloudflare like server connection intermediary thing?
+ */
 
 /*
  * 
@@ -31,6 +37,8 @@ using json = nlohmann::json;
  * if session doesnt exist & login is good then create session
  * *bonus* if user leaves page session automatically destroyed
  *
+ * /logout
+ * /protected?logout makes more sense than ^
  */
 
 struct Session {
@@ -76,6 +84,7 @@ class UserService {
         std::vector<User> users;
         std::mutex mtx;
     public:
+        // add check for existing username
         void add_user(User user) {
             users.emplace_back(user); 
             std::cout << user.get_id() << " " << user.get_username() << " " << user.get_password() << std::endl;
@@ -183,6 +192,7 @@ path_cat(
 // Handle HTTP requests and generate appropriate responses
 template <class Body, class Allocator>
 http::message_generator handle_request(beast::string_view doc_root, http::request<Body, http::basic_fields<Allocator>>&& req, std::shared_ptr<Application> app) {
+    total_requests++;
     std::map<std::string, http::status> statusMap = {
         {"bad", http::status::bad_request},
         {"not_found", http::status::not_found},
@@ -192,14 +202,22 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
             beast::string_view str) {
         auto status = statusMap[which];
         http::response<http::string_body> res{status, req.version()};
-        res.set(http::field::server, BOOST_BEAST_DEPRECATION_STRING);
         // Maybe change this to application/json so I can pass back the session ID upon successful login
         res.set(http::field::content_type, "application/json");
         res.keep_alive(req.keep_alive());
         res.body() = std::string(str);
         res.prepare_payload();
         return res;
-    };    
+    };
+    if (req.method() == http::verb::get && req.target() == "/status") {
+        json response;
+        response["active_connections"] = active_connections.load();
+        response["total_requests"] = total_requests.load();
+        //response["cpu_usage"] = get_cpu_usage();
+        //response["memory_usage"] = get_memory_usage();
+        //response["uptime"] = get_uptime();
+        return res_map("ok_request", response.dump());
+    }
     if (req.method() == http::verb::post) {
         if (req.target() == "/register") {
             try {
@@ -210,7 +228,9 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
                 auto user_service = app->get_user_service();
                 user_.set_id(user_service->get_users_size()); 
                 user_service->add_user(user_);
-                return res_map("ok_request", "User registered successfully");
+                json response;
+                response["success"] = "true";
+                return res_map("ok_request", response.dump());
             } catch (const std::exception &e) {
                 return res_map("server_error", e.what());
             }
@@ -224,8 +244,7 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
                     json response;
                     response["success"] = "true";
                     response["session_id"] = session_id;
-                    std::string t = response.dump();  // Convert JSON object to string
-                    return res_map("ok_request", t);
+                    return res_map("ok_request", response.dump());
                 } else {
                     return res_map("server_error", "invalid login");
                 }
@@ -242,7 +261,10 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
                 }
                 std::string session_id = req_["session_id"];
                 if (user_service->is_session_valid(session_id)) {
-                    return res_map("ok_request", "Access granted to protected resource");
+                    json response;
+                    response["success"] = "true";
+                    response["session_id"] = session_id;
+                    return res_map("ok_request", response.dump());
                 } else {
                     return res_map("server_error", "invalid session");
                 }
@@ -279,7 +301,6 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
 
     if (req.method() == http::verb::head) {
         http::response<http::empty_body> res{http::status::ok, req.version()};
-        res.set(http::field::server, BOOST_BEAST_DEPRECATION_STRING);
         res.set(http::field::content_type, mime_type(path));
         res.content_length(size);
         res.keep_alive(req.keep_alive());
@@ -287,7 +308,6 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
     }
 
     http::response<http::file_body> res{std::piecewise_construct, std::make_tuple(std::move(body)), std::make_tuple(http::status::ok, req.version())};
-    res.set(http::field::server, BOOST_BEAST_DEPRECATION_STRING);
     res.set(http::field::content_type, mime_type(path));
     res.content_length(size);
     res.keep_alive(req.keep_alive());
@@ -309,7 +329,9 @@ class session : public std::enable_shared_from_this<session> {
     std::shared_ptr<Application> app_;
     public:
     session(tcp::socket&& socket, std::shared_ptr<std::string const> const& doc_root, std::shared_ptr<Application> app)
-        : stream_(std::move(socket)), doc_root_(doc_root), app_(app) {}
+        : stream_(std::move(socket)), doc_root_(doc_root), app_(app) { active_connections++; }
+
+    ~session() { active_connections--; }
 
     void run() {
         net::dispatch(stream_.get_executor(), beast::bind_front_handler(&session::do_read, shared_from_this()));
