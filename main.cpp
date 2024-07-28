@@ -15,6 +15,9 @@
 #include <random>
 #include <ctime>
 #include <nlohmann/json.hpp>
+
+#define BOOST_BEAST_ALLOW_DEPRECATED
+
 namespace beast = boost::beast;
 namespace http = beast::http;
 namespace net = boost::asio;
@@ -71,6 +74,7 @@ class User {
 class UserService {
     private:
         std::vector<User> users;
+        std::mutex mtx;
     public:
         void add_user(User user) {
             users.emplace_back(user); 
@@ -79,6 +83,7 @@ class UserService {
         int get_users_size() const { return users.size(); }
 
         bool validate_login(const std::string& username, const std::string& password) {
+            std::lock_guard<std::mutex> lock(mtx);
             for (int i = 0; i < users.size(); i++) {
                 if (users.at(i).get_username() == username && users.at(i).get_password() == password) {
                     users.at(i).generate_session_id();
@@ -97,6 +102,14 @@ class UserService {
                 }
             }
             return "";
+        }        
+        bool is_session_valid(const std::string& session_id) const {
+            for (const auto& user : users) {
+                if (user.get_session().get_session_id() == session_id) {
+                    return true;
+                }
+            }
+            return false;
         }
 };
 
@@ -104,9 +117,7 @@ class Application {
     private:
         std::shared_ptr<UserService> user_service;
     public:
-        Application() : user_service(std::make_shared<UserService>()) {
-            std::cout << "Application() constructor" << std::endl;
-        }
+        Application() : user_service(std::make_shared<UserService>()) {}
         std::shared_ptr<UserService> get_user_service() const { return user_service; }
         virtual ~Application() = default;
 };
@@ -222,6 +233,23 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
                 return res_map("server_error", e.what());
             }
         }
+        if (req.target() == "/protected") {
+            try {
+                json req_ = json::parse(req.body());
+                auto user_service = app->get_user_service();
+                if (!req_.contains("session_id") || req_["session_id"].is_null()) {
+                    return res_map("server_error", "session_id is missing or null");
+                }
+                std::string session_id = req_["session_id"];
+                if (user_service->is_session_valid(session_id)) {
+                    return res_map("ok_request", "Access granted to protected resource");
+                } else {
+                    return res_map("server_error", "invalid session");
+                }
+            } catch (const std::exception &e) {
+                return res_map("server_error", e.what());
+            }
+        }
     }
 
     if (req.method() != http::verb::get && req.method() != http::verb::head)
@@ -231,6 +259,7 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
         return res_map("bad_request", "Illegal request-target");
     std::string path = path_cat(doc_root, req.target());
     if (req.method() == http::verb::get) {
+
         if (req.target().back() == '/')
             path.append("index.html");  
     }
