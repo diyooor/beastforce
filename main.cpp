@@ -21,33 +21,69 @@ namespace net = boost::asio;
 using tcp = boost::asio::ip::tcp;
 using json = nlohmann::json; 
 
+/*
+ * 
+ * /login POST username password
+ * if session exists (for now) login fail
+ * if session doesnt exist & login is good then create session
+ * *bonus* if user leaves page session automatically destroyed
+ *
+ */
+
+struct Session {
+    private:
+        int id;
+        std::string session_id;
+    public:
+        void set_id(int id_) { id = id_; }
+        void set_session_id(std::string session_id_) { session_id = session_id_; }
+        std::string get_session_id() { return session_id; }
+};
+
 struct User {
     private:
         int id;
         std::string username;
         std::string password;
+        Session session;
     public:
         void set_id(int id_) { id = id_; }
         void set_username(std::string username_) { username = username_; }
         void set_password(std::string password_) { password = password_; }
+        void set_session(Session session_) { session = session_; }
+        int get_id() { return id; }
         std::string get_username() { return username; }
         std::string get_password() { return password; }
-        int get_id() { return id; }
+        Session get_session() { return session; }       
+        void generate_session_id() {
+            std::string chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+            std::mt19937 gen(static_cast<unsigned long>(time(0)));
+            std::uniform_int_distribution<> dis(0, chars.size() - 1);
+
+            std::string session_id;
+            for (int i = 0; i < 16; ++i) {
+                session_id += chars[dis(gen)];
+            }
+            session.set_session_id(session_id);
+        }
 };
 
 class UserService {
     private:
         std::vector<User> users;
     public:
-        void add_user(User user) { 
+        void add_user(User user) {
             users.emplace_back(user); 
             std::cout << "add_user\n id: " << user.get_id() << " " << user.get_username() << " " << user.get_password()  << std::endl;
         }
         int get_users_size() { return users.size(); }
 
         bool validate_login(const std::string username, const std::string password) {
-            for (int i = 0; i < users.size() + 1; i++) {
-                if (users.at(i).get_username() == username) {
+            for (int i = 0; i < users.size(); i++) {
+                if (users.at(i).get_username() == username && users.at(i).get_password() == password) {
+                    users.at(i).generate_session_id();
+                    Session temp = users.at(i).get_session();
+                    std::cout << users.at(i).get_id() << " " << temp.get_session_id() << std::endl; 
                     return true;
                 }
             }
@@ -137,6 +173,7 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
         auto status = statusMap[which];
         http::response<http::string_body> res{status, req.version()};
         res.set(http::field::server, BOOST_BEAST_DEPRECATION_STRING);
+        // Maybe change this to application/json so I can pass back the session ID upon successful login
         res.set(http::field::content_type, "text/html");
         res.keep_alive(req.keep_alive());
         res.body() = std::string(str);
