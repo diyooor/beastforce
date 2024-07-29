@@ -16,7 +16,9 @@
 #include <ctime>
 #include <nlohmann/json.hpp>
 #include <atomic>
-
+#include <string>
+#include <fstream>
+#include <sstream>
 namespace beast = boost::beast;
 namespace http = beast::http;
 namespace net = boost::asio;
@@ -40,7 +42,6 @@ std::chrono::time_point<std::chrono::steady_clock> start_time = std::chrono::ste
  * /logout
  * /protected?logout makes more sense than ^
  */
-
 struct Session {
     private:
         int id;
@@ -129,6 +130,7 @@ class Application {
         Application() : user_service(std::make_shared<UserService>()) {}
         std::shared_ptr<UserService> get_user_service() const { return user_service; }
         virtual ~Application() = default;
+
 };
 
 
@@ -193,31 +195,16 @@ path_cat(
 template <class Body, class Allocator>
 http::message_generator handle_request(beast::string_view doc_root, http::request<Body, http::basic_fields<Allocator>>&& req, std::shared_ptr<Application> app) {
     total_requests++;
-    std::map<std::string, http::status> statusMap = {
-        {"bad", http::status::bad_request},
-        {"not_found", http::status::not_found},
-        {"server_error", http::status::internal_server_error},
-        {"ok_request", http::status::ok}};
-    auto const res_map = [&req, &statusMap](std::string which,
-            beast::string_view str) {
-        auto status = statusMap[which];
+    
+    auto const res_ = [&req](http::status status, const std::string& body, const std::string& content_type = "application/json") {
         http::response<http::string_body> res{status, req.version()};
-        // Maybe change this to application/json so I can pass back the session ID upon successful login
-        res.set(http::field::content_type, "application/json");
+        res.set(http::field::content_type, content_type);
         res.keep_alive(req.keep_alive());
-        res.body() = std::string(str);
+        res.body() = body;
         res.prepare_payload();
         return res;
     };
-    if (req.method() == http::verb::get && req.target() == "/status") {
-        json response;
-        response["active_connections"] = active_connections.load();
-        response["total_requests"] = total_requests.load();
-        //response["cpu_usage"] = get_cpu_usage();
-        //response["memory_usage"] = get_memory_usage();
-        //response["uptime"] = get_uptime();
-        return res_map("ok_request", response.dump());
-    }
+
     if (req.method() == http::verb::post) {
         if (req.target() == "/register") {
             try {
@@ -230,9 +217,9 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
                 user_service->add_user(user_);
                 json response;
                 response["success"] = "true";
-                return res_map("ok_request", response.dump());
+                return res_(http::status::ok, response.dump());
             } catch (const std::exception &e) {
-                return res_map("server_error", e.what());
+                return res_(http::status::internal_server_error, e.what());
             }
         }
         if (req.target() == "/login") {
@@ -244,12 +231,12 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
                     json response;
                     response["success"] = "true";
                     response["session_id"] = session_id;
-                    return res_map("ok_request", response.dump());
+                    return res_(http::status::ok, response.dump());
                 } else {
-                    return res_map("server_error", "invalid login");
+                    return res_(http::status::internal_server_error, "invalid login");
                 }
             } catch (const std::exception &e) {
-                return res_map("server_error", e.what());
+                return res_(http::status::internal_server_error, e.what());
             }
         }
         if (req.target() == "/protected") {
@@ -257,45 +244,53 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
                 json req_ = json::parse(req.body());
                 auto user_service = app->get_user_service();
                 if (!req_.contains("session_id") || req_["session_id"].is_null()) {
-                    return res_map("server_error", "session_id is missing or null");
+                    return res_(http::status::internal_server_error, "session_id is missing or null");
                 }
                 std::string session_id = req_["session_id"];
                 if (user_service->is_session_valid(session_id)) {
                     json response;
                     response["success"] = "true";
                     response["session_id"] = session_id;
-                    return res_map("ok_request", response.dump());
+                    return res_(http::status::ok, response.dump());
                 } else {
-                    return res_map("server_error", "invalid session");
+                    return res_(http::status::internal_server_error, "invalid session");
                 }
             } catch (const std::exception &e) {
-                return res_map("server_error", e.what());
+                return res_(http::status::internal_server_error, e.what());
             }
         }
     }
 
     if (req.method() != http::verb::get && req.method() != http::verb::head)
-        return res_map("bad_request", "Unknown HTTP-method");
+        return res_(http::status::bad_request, "Unknown HTTP-method", "text/html");
 
     if (req.target().empty() || req.target()[0] != '/' || req.target().find("..") != beast::string_view::npos)
-        return res_map("bad_request", "Illegal request-target");
+        return res_(http::status::bad_request, "Illegal request-target", "text/html");
+    
     std::string path = path_cat(doc_root, req.target());
     if (req.method() == http::verb::get) {
-
         if (req.target().back() == '/')
-            path.append("index.html");  
+           path.append("index.html");
+        else if (req.target() == "/status") {
+            json response;
+            response["active_connections"] = active_connections.load();
+            response["total_requests"] = total_requests.load();
+            //response["cpu_usage"] = get_cpu_usage();
+            //response["memory_usage"] = get_memory_usage();
+            //response["uptime"] = get_uptime();
+            return res_(http::status::ok, response.dump());
+        }
     }
 
     beast::error_code ec;
     http::file_body::value_type body;
-    std::string msg = "";
     body.open(path.c_str(), beast::file_mode::scan, ec);
     if (ec == beast::errc::no_such_file_or_directory) {
-        msg = std::string(req.target()) + " not found";
-        return res_map("not_found", msg);
+        std::string msg = std::string(req.target()) + " not found";
+        return res_(http::status::not_found, msg, "text/html");
     }
     if (ec)
-        return res_map("server_error", ec.message()); 
+        return res_(http::status::internal_server_error, ec.message(), "text/html"); 
 
     auto const size = body.size();
 
