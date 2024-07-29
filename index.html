@@ -1,5 +1,123 @@
-<html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            transition: background-color 0.3s;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            width: 300px;
+            text-align: center;
+        }
+        .container h2 {
+            margin-top: 0;
+            font-size: 24px;
+        }
+        .container input, .container button {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .container button {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        .container button:hover {
+            background-color: #218838;
+        }
+        .message span {
+            color: red;
+            font-size: 14px;
+        }
+        .dashboard {
+            display: none;
+            text-align: center;
+        }
+        .dashboard.active {
+            display: block;
+        }
+    </style>
+</head>
 <body>
-    helloworld
+    <div id="loginContainer" class="container">
+        <h2>Login</h2>
+        <form id="loginForm">
+            <input type="text" id="username" name="username" placeholder="Username" required>
+            <input type="password" id="password" name="password" placeholder="Password" required>
+            <button type="submit">Login</button>
+        </form>
+        <div class="message" id="message"></div>
+    </div>
+    <div id="dashboard" class="dashboard">
+        <h2>Welcome to the Dashboard</h2>
+        <p>Here’s some important information for you.</p>
+        <button id="logoutButton">Logout</button>
+    </div>
+    <script>
+        const loginContainer = document.getElementById('loginContainer');
+        const dashboard = document.getElementById('dashboard');
+        const messageElement = document.getElementById('message');
+        
+        // Check if user is already logged in
+        if (localStorage.getItem('session_id')) {
+            loginContainer.style.display = 'none';
+            dashboard.classList.add('active');
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                const response = await fetch('/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, password }),
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok && result.success === 'true') {
+                    localStorage.setItem('session_id', result.session_id);
+                    loginContainer.style.display = 'none';
+                    dashboard.classList.add('active');
+                } else {
+                    messageElement.innerHTML = `<span>${result.error || 'Login failed'}</span>`;
+                }
+            } catch (error) {
+                messageElement.innerHTML = `<span>${error.message}</span>`;
+            }
+        });
+
+        document.getElementById('logoutButton').addEventListener('click', function() {
+            localStorage.removeItem('session_id');
+            loginContainer.style.display = 'block';
+            dashboard.classList.remove('active');
+        });
+    </script>
 </body>
 </html>
+
