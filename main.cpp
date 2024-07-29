@@ -85,7 +85,6 @@ class UserService {
         std::vector<User> users;
         std::mutex mtx;
     public:
-        // add check for existing username
         void add_user(User user) {
             users.emplace_back(user); 
             std::cout << user.get_id() << " " << user.get_username() << " " << user.get_password() << std::endl;
@@ -133,8 +132,6 @@ class Application {
 
 };
 
-
-// Determine MIME type based on file extension
 beast::string_view mime_type(beast::string_view path) {
     using beast::iequals;
     auto const ext = [&path] {
@@ -163,7 +160,6 @@ beast::string_view mime_type(beast::string_view path) {
     return "application/text";
 }
 
-// Concatenate base and path, handling platform-specific path separators
     std::string
 path_cat(
         beast::string_view base,
@@ -189,13 +185,9 @@ path_cat(
     return result;
 }
 
-
-
-// Handle HTTP requests and generate appropriate responses
 template <class Body, class Allocator>
 http::message_generator handle_request(beast::string_view doc_root, http::request<Body, http::basic_fields<Allocator>>&& req, std::shared_ptr<Application> app) {
     total_requests++;
-    
     auto const res_ = [&req](http::status status, const std::string& body, const std::string& content_type = "application/json") {
         http::response<http::string_body> res{status, req.version()};
         res.set(http::field::content_type, content_type);
@@ -233,10 +225,16 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
                     response["session_id"] = session_id;
                     return res_(http::status::ok, response.dump());
                 } else {
-                    return res_(http::status::internal_server_error, "invalid login");
+                    json response;
+                    response["success"] = "false";
+                    response["error"] = "Invalid login";
+                    return res_(http::status::unauthorized, response.dump());
                 }
             } catch (const std::exception &e) {
-                return res_(http::status::internal_server_error, e.what());
+                json response;
+                response["success"] = "false";
+                response["error"] = e.what();
+                return res_(http::status::internal_server_error, response.dump());
             }
         }
         if (req.target() == "/protected") {
