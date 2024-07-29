@@ -1,10 +1,6 @@
 # Webapp
 
-## Output 
-
-```bash
-~/workspace/webapp
- % ./main 0.0.0.0 8080 . 1
-0 test_user test_password
-0 RAydfEXlsLqGea4n
-```
+## Demo
+![Alt text](images/1.png)
+![Alt text](images/2.png)
+![Alt text](images/3.png)
