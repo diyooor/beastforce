@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login Page</title>
+    <title>Login and Register</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            background-color: #f4f4f4;
+            background-color: #1e1e1e;
+            color: #f4f4f4;
             margin: 0;
             padding: 0;
             display: flex;
@@ -17,10 +18,10 @@
             transition: background-color 0.3s;
         }
         .container {
-            background: white;
+            background: #2c2c2c;
             padding: 20px;
             border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
             width: 300px;
             text-align: center;
         }
@@ -32,8 +33,13 @@
             width: 100%;
             padding: 10px;
             margin: 10px 0;
-            border: 1px solid #ddd;
+            border: 1px solid #444;
             border-radius: 4px;
+            background: #333;
+            color: #f4f4f4;
+        }
+        .container input::placeholder {
+            color: #888;
         }
         .container button {
             background-color: #28a745;
@@ -55,40 +61,96 @@
         .dashboard.active {
             display: block;
         }
+        .hidden {
+            display: none;
+        }
+        /* Tab Styles */
+        .tabs {
+            display: flex;
+            cursor: pointer;
+            margin: 20px 0;
+        }
+        .tab {
+            flex: 1;
+            padding: 10px;
+            background: #333;
+            border: 1px solid #444;
+            border-radius: 4px 4px 0 0;
+            text-align: center;
+            margin-right: 5px;
+            color: #f4f4f4;
+        }
+        .tab.active {
+            background: #2c2c2c;
+            border-bottom: 1px solid transparent;
+            font-weight: bold;
+        }
+        .tab-content {
+            border: 1px solid #444;
+            border-radius: 0 0 4px 4px;
+            padding: 20px;
+            background: #2c2c2c;
+        }
     </style>
 </head>
 <body>
     <div id="loginContainer" class="container">
         <h2>Login</h2>
         <form id="loginForm">
-            <input type="text" id="username" name="username" placeholder="Username" required>
-            <input type="password" id="password" name="password" placeholder="Password" required>
+            <input type="text" id="loginUsername" name="username" placeholder="Username" required>
+            <input type="password" id="loginPassword" name="password" placeholder="Password" required>
             <button type="submit">Login</button>
         </form>
-        <div class="message" id="message"></div>
+        <div class="message" id="loginMessage"></div>
+        <button id="showRegister">Register</button>
     </div>
+
+    <div id="registerContainer" class="container hidden">
+        <h2>Register</h2>
+        <form id="registerForm">
+            <input type="text" id="registerUsername" name="username" placeholder="Username" required>
+            <input type="password" id="registerPassword" name="password" placeholder="Password" required>
+            <button type="submit">Register</button>
+        </form>
+        <div class="message" id="registerMessage"></div>
+        <button id="showLogin">Back to Login</button>
+    </div>
+
     <div id="dashboard" class="dashboard">
-        <h2>Welcome to the Dashboard</h2>
-        <p>Here’s some important information for you.</p>
+        <h2>Dashboard</h2>
+        <div class="tabs">
+            <div class="tab active" data-tab="status">Server Status</div>
+            <!-- Add more tabs here if needed -->
+        </div>
+        <div class="tab-content" id="statusContent">
+            <h3>Server Status</h3>
+            <p id="statusMessage">Loading...</p>
+        </div>
         <button id="logoutButton">Logout</button>
     </div>
+
     <script>
         const loginContainer = document.getElementById('loginContainer');
+        const registerContainer = document.getElementById('registerContainer');
         const dashboard = document.getElementById('dashboard');
-        const messageElement = document.getElementById('message');
-        
+        const loginMessage = document.getElementById('loginMessage');
+        const registerMessage = document.getElementById('registerMessage');
+        const statusMessage = document.getElementById('statusMessage');
+
         // Check if user is already logged in
         if (localStorage.getItem('session_id')) {
             loginContainer.style.display = 'none';
+            registerContainer.style.display = 'none';
             dashboard.classList.add('active');
+            fetchStatus();
         }
 
         document.getElementById('loginForm').addEventListener('submit', async function(event) {
             event.preventDefault();
-            
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
-            
+
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+
             try {
                 const response = await fetch('/login', {
                     method: 'POST',
@@ -97,26 +159,96 @@
                     },
                     body: JSON.stringify({ username, password }),
                 });
-                
+
                 const result = await response.json();
-                
+
                 if (response.ok && result.success === 'true') {
                     localStorage.setItem('session_id', result.session_id);
                     loginContainer.style.display = 'none';
+                    registerContainer.style.display = 'none';
                     dashboard.classList.add('active');
+                    fetchStatus();  // Fetch server status after successful login
                 } else {
-                    messageElement.innerHTML = `<span>${result.error || 'Login failed'}</span>`;
+                    loginMessage.innerHTML = `<span>${result.error || 'Login failed'}</span>`;
                 }
             } catch (error) {
-                messageElement.innerHTML = `<span>${error.message}</span>`;
+                loginMessage.innerHTML = `<span>${error.message}</span>`;
+            }
+        });
+
+        document.getElementById('registerForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+
+            const username = document.getElementById('registerUsername').value;
+            const password = document.getElementById('registerPassword').value;
+
+            try {
+                const response = await fetch('/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username, password }),
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success === 'true') {
+                    registerContainer.style.display = 'none';
+                    loginContainer.style.display = 'block';
+                } else {
+                    registerMessage.innerHTML = `<span>${result.error || 'Registration failed'}</span>`;
+                }
+            } catch (error) {
+                registerMessage.innerHTML = `<span>${error.message}</span>`;
             }
         });
 
         document.getElementById('logoutButton').addEventListener('click', function() {
             localStorage.removeItem('session_id');
             loginContainer.style.display = 'block';
+            registerContainer.style.display = 'none';
             dashboard.classList.remove('active');
         });
+
+        document.getElementById('showRegister').addEventListener('click', function() {
+            loginContainer.style.display = 'none';
+            registerContainer.style.display = 'block';
+        });
+
+        document.getElementById('showLogin').addEventListener('click', function() {
+            registerContainer.style.display = 'none';
+            loginContainer.style.display = 'block';
+        });
+
+        function fetchStatus() {
+            fetch('/status')
+                .then(response => response.json())
+                .then(data => {
+                    statusMessage.innerHTML = `
+                        Active Connections: ${data.active_connections} <br>
+                        Total Requests: ${data.total_requests}
+                        <!-- Add more data fields here if needed -->
+                    `;
+                })
+                .catch(error => {
+                    statusMessage.innerHTML = `<span>${error.message}</span>`;
+                });
+        }
+
+        // Tab functionality
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', function() {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(content => content.style.display = 'none');
+
+                tab.classList.add('active');
+                document.getElementById(`${tab.dataset.tab}Content`).style.display = 'block';
+            });
+        });
+
+        // Show the first tab by default
+        document.querySelector('.tab').click();
     </script>
 </body>
 </html>
