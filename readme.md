@@ -2,14 +2,15 @@
 
 # Webapp
 
-A simple web application for user authentication and server status monitoring.
+A simple web application built on top of boost beast. 
 
 ## Features
 
 - User login and registration
 - Password change
-- Server status dashboard
-
+- Server status dashboard (CPU usage, requests, etc.)
+- Timed session management
+- 
 ## Files
 
 - `index.html`: Frontend HTML and CSS
@@ -24,9 +25,9 @@ A simple web application for user authentication and server status monitoring.
    ```
 3. Run the server:
    ```sh
-   ./main
+   ./main 0.0.0.0 8080 . 1
    ```
-4. Open `index.html` in your browser.
+4. Open `localhost:8080/` in your browser.
 
 ## API Endpoints
 
@@ -35,10 +36,12 @@ A simple web application for user authentication and server status monitoring.
 - `/logout`: User logout
 - `/status`: Get server status
 - `/password`: Change password
+- `/external`: Execute external requests
+- `/validate-session`: Validate sessions
 
 ## Dependencies
 
-- C++ compiler
+- g++
 - Boost 1.85.0
 - Web browser
 
