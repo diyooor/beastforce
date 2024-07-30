@@ -54,5 +54,4 @@ A simple web application built on top of boost beast.
 ---
 
 ## Screenshots
-![Alt text](images/2.gif)
-![Alt text](images/1.gif)
+![Alt text](images/11.gif)
