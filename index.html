@@ -204,8 +204,11 @@
                 const result = await response.json();
 
                 if (response.ok && result.success === 'true') {
-                    registerContainer.style.display = 'none';
-                    loginContainer.style.display = 'block';
+                    registerMessage.innerHTML = `<span style="color: green;">Registration successful</span>`;
+                    setTimeout(() => {
+                        registerContainer.style.display = 'none';
+                        loginContainer.style.display = 'block';
+                    }, 2000); // Display message for 2 seconds before redirecting
                 } else {
                     registerMessage.innerHTML = `<span>${result.error || 'Registration failed'}</span>`;
                 }
@@ -246,11 +249,13 @@
         document.getElementById('showRegister').addEventListener('click', function() {
             loginContainer.style.display = 'none';
             registerContainer.style.display = 'block';
+            loginMessage.innerHTML = ''; // Reset message text
         });
 
         document.getElementById('showLogin').addEventListener('click', function() {
             registerContainer.style.display = 'none';
             loginContainer.style.display = 'block';
+            registerMessage.innerHTML = ''; // Reset message text
         });
 
         function fetchStatus() {
