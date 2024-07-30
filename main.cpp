@@ -22,6 +22,7 @@
 #include <string>
 #include <fstream>
 #include <sstream>
+
 namespace beast = boost::beast;
 namespace http = beast::http;
 namespace net = boost::asio;
@@ -64,100 +65,186 @@ private:
     beast::tcp_stream stream_;
 };
 
-
 class Session {
-    private:
-        int id;
-        std::string session_id;
-    public:
-        void set_id(int id_) { id = id_; }
-        void set_session_id(std::string session_id_) { session_id = session_id_; }
-        std::string get_session_id() { return session_id; }
+private:
+    std::string session_id;
+    std::chrono::time_point<std::chrono::steady_clock> last_active;
+    mutable std::mutex mtx;
+
+public:
+    Session() : last_active(std::chrono::steady_clock::now()) {}
+
+    // Delete copy constructor and copy assignment operator
+    Session(const Session&) = delete;
+    Session& operator=(const Session&) = delete;
+
+    // Define move constructor and move assignment operator
+    Session(Session&& other) noexcept {
+        std::lock_guard<std::mutex> lock(other.mtx);
+        session_id = std::move(other.session_id);
+        last_active = other.last_active;
+    }
+
+    Session& operator=(Session&& other) noexcept {
+        if (this != &other) {
+            std::lock_guard<std::mutex> lock1(mtx);
+            std::lock_guard<std::mutex> lock2(other.mtx);
+            session_id = std::move(other.session_id);
+            last_active = other.last_active;
+        }
+        return *this;
+    }
+
+    void set_session_id(std::string session_id_) {
+        std::lock_guard<std::mutex> lock(mtx);
+        session_id = session_id_;
+        last_active = std::chrono::steady_clock::now();
+    }
+
+    std::string get_session_id() const {
+        std::lock_guard<std::mutex> lock(mtx);
+        return session_id;
+    }
+
+    void update_last_active() {
+        std::lock_guard<std::mutex> lock(mtx);
+        last_active = std::chrono::steady_clock::now();
+    }
+
+    bool is_expired() const {
+        std::lock_guard<std::mutex> lock(mtx);
+        auto now = std::chrono::steady_clock::now();
+        return std::chrono::duration_cast<std::chrono::seconds>(now - last_active).count() > 5;
+    }
 };
 
 class User {
-    private:
-        int id;
-        std::string username;
-        std::string password;
-        Session session;
-    public:
-        void set_id(int id_) { id = id_; }
-        void set_username(std::string username_) { username = username_; }
-        void set_password(std::string password_) { password = password_; }
-        void set_session(Session session_) { session = session_; }
-        int get_id() const { return id; }
-        std::string get_username() const { return username; }
-        std::string get_password() const { return password; }
-        Session get_session() const { return session; }
-        void invalidate_session() {
-            session.set_session_id("");
-        }
-        void generate_session_id() {
-            std::string chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-            std::mt19937 gen(static_cast<unsigned long>(time(0)));
-            std::uniform_int_distribution<> dis(0, chars.size() - 1);
+private:
+    int id;
+    std::string username;
+    std::string password;
+    Session session;
 
-            std::string session_id;
-            for (int i = 0; i < 16; ++i) {
-                session_id += chars[dis(gen)];
-            }
-            session.set_session_id(session_id);
+public:
+    User() = default;
+
+    // Delete copy constructor and copy assignment operator
+    User(const User&) = delete;
+    User& operator=(const User&) = delete;
+
+    // Define move constructor and move assignment operator
+    User(User&& other) noexcept
+        : id(other.id),
+        username(std::move(other.username)),
+        password(std::move(other.password)),
+        session(std::move(other.session)) {}
+
+    User& operator=(User&& other) noexcept {
+        if (this != &other) {
+            id = other.id;
+            username = std::move(other.username);
+            password = std::move(other.password);
+            session = std::move(other.session);
         }
+        return *this;
+    }
+
+    void set_id(int id_) { id = id_; }
+    void set_username(std::string username_) { username = std::move(username_); }
+    void set_password(std::string password_) { password = std::move(password_); }
+    void set_session(Session session_) { session = std::move(session_); }
+    int get_id() const { return id; }
+    std::string get_username() const { return username; }
+    std::string get_password() const { return password; }
+    const Session& get_session() const { return session; }
+    void invalidate_session() {
+        session.set_session_id("");
+    }
+    void generate_session_id() {
+        std::string chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        std::mt19937 gen(static_cast<unsigned long>(time(0)));
+        std::uniform_int_distribution<> dis(0, chars.size() - 1);
+
+        std::string session_id;
+        for (int i = 0; i < 16; ++i) {
+            session_id += chars[dis(gen)];
+        }
+        session.set_session_id(session_id);
+    }
 };
 
 class UserService {
-    private:
-        std::vector<User> users;
-        std::mutex mtx;
-    public:
-        void add_user(User user) {
-            users.emplace_back(user); 
-            std::cout << user.get_id() << " " << user.get_username() << " " << user.get_password() << std::endl;
-        }
-        int get_users_size() const { return users.size(); } 
+private:
+    std::vector<User> users;
+    std::mutex mtx;
 
-        bool validate_login(const std::string& username, const std::string& password) {
-            std::lock_guard<std::mutex> lock(mtx);
-            for (int i = 0; i < users.size(); i++) {
-                if (users.at(i).get_username() == username && users.at(i).get_password() == password) {
-                    users.at(i).generate_session_id();
-                    Session temp = users.at(i).get_session();
-                    std::cout << users.at(i).get_id() << " " << temp.get_session_id() << std::endl; 
-                    return true;
-                }
-            }
-            return false;
-        }
+public:
+    void add_user(User user) {
+        std::lock_guard<std::mutex> lock(mtx);
+        users.emplace_back(std::move(user)); 
+        std::cout << users.back().get_id() << " " << users.back().get_username() << " " << users.back().get_password() << std::endl;
+    }
 
-        std::string get_session_id(const std::string& username) const {
-            for (const auto& user : users) {
-                if (user.get_username() == username) {
-                    return user.get_session().get_session_id();
-                }
+    int get_users_size() const { return users.size(); }
+
+    bool validate_login(const std::string& username, const std::string& password) {
+        std::lock_guard<std::mutex> lock(mtx);
+        for (int i = 0; i < users.size(); i++) {
+            if (users.at(i).get_username() == username && users.at(i).get_password() == password) {
+                users.at(i).generate_session_id();
+                const Session& temp = users.at(i).get_session();
+                std::cout << users.at(i).get_id() << " " << temp.get_session_id() << std::endl; 
+                return true;
             }
-            return "";
-        }        
-        bool is_session_valid(const std::string& session_id) const {
-            for (const auto& user : users) {
-                if (user.get_session().get_session_id() == session_id) {
-                    return true;
-                }
-            }
-            return false;
         }
-        bool invalidate_session(const std::string& session_id) {
-            std::lock_guard<std::mutex> lock(mtx);
-            for (auto& user : users) {
-                if (user.get_session().get_session_id() == session_id) {
-                    user.invalidate_session();
-                    return true;
-                }
+        return false;
+    }
+
+    std::string get_session_id(const std::string& username) const {
+        for (const auto& user : users) {
+            if (user.get_username() == username) {
+                return user.get_session().get_session_id();
             }
-            return false;
         }
-        std::vector<User>& get_users() { return users; }
-        std::mutex& get_mutex() { return mtx; }
+        return "";
+    }
+
+    bool is_session_valid(const std::string& session_id) const {
+        for (const auto& user : users) {
+            if (user.get_session().get_session_id() == session_id) {
+                std::cout << "Session ID " << session_id << " is valid for user " << user.get_username() << std::endl;
+                return true;
+            }
+        }
+        std::cout << "Session ID " << session_id << " is invalid" << std::endl;
+        return false;
+    }
+
+    bool invalidate_session(const std::string& session_id) {
+        std::lock_guard<std::mutex> lock(mtx);
+        for (auto& user : users) {
+            if (user.get_session().get_session_id() == session_id) {
+                std::cout << "Invalidating session ID " << session_id << " for user " << user.get_username() << std::endl;
+                user.invalidate_session();
+                return true;
+            }
+        }
+        std::cout << "Failed to invalidate session ID " << session_id << std::endl;
+        return false;
+    }
+
+    void invalidate_expired_sessions() {
+        std::lock_guard<std::mutex> lock(mtx);
+        for (auto& user : users) {
+            if (user.get_session().is_expired()) {
+                std::cout << "Session expired for user " << user.get_username() << " with session ID " << user.get_session().get_session_id() << std::endl;
+                user.invalidate_session();
+            }
+        }
+    }
+
+    std::vector<User>& get_users() { return users; }
+    std::mutex& get_mutex() { return mtx; }
 };
 
 class Application {
@@ -201,11 +288,7 @@ beast::string_view mime_type(beast::string_view path) {
     return "application/text";
 }
 
-    std::string
-path_cat(
-        beast::string_view base,
-        beast::string_view path)
-{
+std::string path_cat(beast::string_view base, beast::string_view path) {
     if(base.empty())
         return std::string(path);
     std::string result(base);
@@ -247,7 +330,7 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
                 user_.set_password(req_["password"]);
                 auto user_service = app->get_user_service();
                 user_.set_id(user_service->get_users_size()); 
-                user_service->add_user(user_);
+                user_service->add_user(std::move(user_));
                 json response;
                 response["success"] = "true";
                 return res_(http::status::ok, response.dump());
@@ -363,12 +446,12 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
 
     if (req.target().empty() || req.target()[0] != '/' || req.target().find("..") != beast::string_view::npos)
         return res_(http::status::bad_request, "Illegal request-target", "text/html");
-    
+
     std::string path = path_cat(doc_root, req.target());
     if (req.method() == http::verb::get) {
         if (req.target().back() == '/')
-           path.append("index.html");
-        else if (req.target() == "/status") {
+            path.append("index.html");
+        if (req.target() == "/status") {
             json response;
             response["active_connections"] = active_connections.load();
             response["total_requests"] = total_requests.load();
@@ -388,6 +471,26 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
             } catch (const std::exception &e) {
                 return res_(http::status::internal_server_error, e.what());
             }
+        }
+        if (req.target().find("/validate-session") == 0) {
+            auto query = std::string(req.target());
+            auto pos = query.find("?");
+            if (pos != std::string::npos) {
+                auto params = query.substr(pos + 1);
+                auto session_id_param = params.substr(params.find("=") + 1);
+
+                auto user_service = app->get_user_service();
+                if (user_service->is_session_valid(session_id_param)) {
+                    json response;
+                    response["success"] = "true";
+                    return res_(http::status::ok, response.dump());
+                } else {
+                    json response;
+                    response["success"] = "false";
+                    return res_(http::status::unauthorized, response.dump());
+                }
+            }
+            return res_(http::status::bad_request, "Missing session_id parameter", "application/json");
         }
     }
 
@@ -418,7 +521,6 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
     return res;
 }
 
-
 // Log errors
 void fail(beast::error_code ec, char const* what) {
     std::cerr << what << ": " << ec.message() << "\n";
@@ -431,7 +533,7 @@ class session : public std::enable_shared_from_this<session> {
     std::shared_ptr<std::string const> doc_root_;
     http::request<http::string_body> req_;
     std::shared_ptr<Application> app_;
-    public:
+public:
     session(tcp::socket&& socket, std::shared_ptr<std::string const> const& doc_root, std::shared_ptr<Application> app)
         : stream_(std::move(socket)), doc_root_(doc_root), app_(app) {}
 
@@ -441,7 +543,7 @@ class session : public std::enable_shared_from_this<session> {
         net::dispatch(stream_.get_executor(), beast::bind_front_handler(&session::do_read, shared_from_this()));
     }
 
-    private:
+private:
     void do_read() {
         req_ = {};
         stream_.expires_after(std::chrono::seconds(30));
@@ -485,28 +587,28 @@ class listener : public std::enable_shared_from_this<listener> {
     tcp::acceptor acceptor_;
     std::shared_ptr<std::string const> doc_root_;
     std::shared_ptr<Application> app_;
-    public:
+public:
     listener(net::io_context& ioc, tcp::endpoint endpoint, std::shared_ptr<std::string const> const& doc_root, std::shared_ptr<Application> app)
         : ioc_(ioc), acceptor_(net::make_strand(ioc)), doc_root_(doc_root), app_(app) {
-            beast::error_code ec;
-            acceptor_.open(endpoint.protocol(), ec);
-            if (ec) { fail(ec, "open"); return; }
+        beast::error_code ec;
+        acceptor_.open(endpoint.protocol(), ec);
+        if (ec) { fail(ec, "open"); return; }
 
-            acceptor_.set_option(net::socket_base::reuse_address(true), ec);
-            if (ec) { fail(ec, "set_option"); return; }
+        acceptor_.set_option(net::socket_base::reuse_address(true), ec);
+        if (ec) { fail(ec, "set_option"); return; }
 
-            acceptor_.bind(endpoint, ec);
-            if (ec) { fail(ec, "bind"); return; }
+        acceptor_.bind(endpoint, ec);
+        if (ec) { fail(ec, "bind"); return; }
 
-            acceptor_.listen(net::socket_base::max_listen_connections, ec);
-            if (ec) { fail(ec, "listen"); return; }
-        }
+        acceptor_.listen(net::socket_base::max_listen_connections, ec);
+        if (ec) { fail(ec, "listen"); return; }
+    }
 
     void run() {
         do_accept();
     }
 
-    private:
+private:
     void do_accept() {
         acceptor_.async_accept(net::make_strand(ioc_), beast::bind_front_handler(&listener::on_accept, shared_from_this()));
     }
@@ -520,6 +622,14 @@ class listener : public std::enable_shared_from_this<listener> {
         do_accept();
     }
 };
+
+// Background function to check and invalidate expired sessions
+void session_timeout_checker(std::shared_ptr<UserService> user_service) {
+    while (true) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        user_service->invalidate_expired_sessions();
+    }
+}
 
 // Main function to start the server
 int main(int argc, char* argv[]) {
@@ -538,6 +648,8 @@ int main(int argc, char* argv[]) {
     net::io_context ioc{threads};
 
     std::make_shared<listener>(ioc, tcp::endpoint{address, port}, doc_root, app)->run();
+
+    std::thread(session_timeout_checker, app->get_user_service()).detach();
 
     std::vector<std::thread> v;
     v.reserve(threads - 1);

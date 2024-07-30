@@ -153,6 +153,7 @@
             registerContainer.style.display = 'none';
             dashboard.classList.add('active');
             fetchStatus();
+            validateSession(); // Initial session validation
         }
 
         document.getElementById('loginForm').addEventListener('submit', async function(event) {
@@ -178,6 +179,7 @@
                     registerContainer.style.display = 'none';
                     dashboard.classList.add('active');
                     fetchStatus();  // Fetch server status after successful login
+                    startSessionValidation(); // Start periodic session validation
                 } else {
                     loginMessage.innerHTML = `<span>${result.error || 'Login failed'}</span>`;
                 }
@@ -237,6 +239,7 @@
                         loginContainer.style.display = 'block';
                         registerContainer.style.display = 'none';
                         dashboard.classList.remove('active');
+                        stopSessionValidation(); // Stop session validation
                     } else {
                         console.error(result.error || 'Logout failed');
                     }
@@ -315,6 +318,42 @@
 
         // Show the first tab by default
         document.querySelector('.tab').click();
+
+        // Validate session periodically
+        let sessionValidationInterval;
+
+        function startSessionValidation() {
+            sessionValidationInterval = setInterval(validateSession, 1000); // Validate session every 5 seconds
+        }
+
+        function stopSessionValidation() {
+            clearInterval(sessionValidationInterval);
+        }
+
+        async function validateSession() {
+            const session_id = localStorage.getItem('session_id');
+            if (session_id) {
+                try {
+                    const response = await fetch(`/validate-session?session_id=${session_id}`);
+                    const data = await response.json();
+
+                    if (data.success === 'false') {
+                        localStorage.removeItem('session_id');
+                        loginContainer.style.display = 'block';
+                        registerContainer.style.display = 'none';
+                        dashboard.classList.remove('active');
+                        stopSessionValidation();
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                }
+            }
+        }
+
+        // Start session validation if session_id exists
+        if (localStorage.getItem('session_id')) {
+            startSessionValidation();
+        }
     </script>
 </body>
 </html>
