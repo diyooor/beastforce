@@ -433,9 +433,9 @@ class session : public std::enable_shared_from_this<session> {
     std::shared_ptr<Application> app_;
     public:
     session(tcp::socket&& socket, std::shared_ptr<std::string const> const& doc_root, std::shared_ptr<Application> app)
-        : stream_(std::move(socket)), doc_root_(doc_root), app_(app) { active_connections++; }
+        : stream_(std::move(socket)), doc_root_(doc_root), app_(app) {}
 
-    ~session() { active_connections--; }
+    ~session() {}
 
     void run() {
         net::dispatch(stream_.get_executor(), beast::bind_front_handler(&session::do_read, shared_from_this()));
