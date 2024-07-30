@@ -1,5 +1,8 @@
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
+#include <boost/beast/version.hpp>
+#include <boost/asio/connect.hpp>
+#include <boost/asio/ip/tcp.hpp>
 #include <boost/asio.hpp>
 #include <boost/config.hpp>
 #include <boost/json/src.hpp>
@@ -28,6 +31,55 @@ using json = nlohmann::json;
 std::atomic<int> active_connections(0);
 std::atomic<int> total_requests(0);
 std::chrono::time_point<std::chrono::steady_clock> start_time = std::chrono::steady_clock::now();
+
+class ClientService {
+public:
+    ClientService() : resolver_(ioc_), stream_(ioc_) {}
+
+    // Perform an HTTP GET request
+    std::string get(const std::string& host, const std::string& port, const std::string& target, int version = 11) {
+        try {
+            // Look up the domain name
+            auto const results = resolver_.resolve(host, port);
+
+            // Make the connection on the IP address we get from a lookup
+            net::connect(stream_.socket(), results.begin(), results.end());
+            // Set up an HTTP GET request message
+            http::request<http::string_body> req{http::verb::get, target, version};
+            req.set(http::field::host, host);
+
+            // Send the HTTP request to the remote host
+            http::write(stream_, req);
+
+            // This buffer is used for reading and must be persisted
+            beast::flat_buffer buffer;
+
+            // Declare a container to hold the response
+            http::response<http::dynamic_body> res;
+
+            // Receive the HTTP response
+            http::read(stream_, buffer, res);
+
+            // Gracefully close the socket
+            beast::error_code ec;
+            stream_.socket().shutdown(tcp::socket::shutdown_both, ec);
+            if(ec && ec != beast::errc::not_connected)
+                throw beast::system_error{ec};
+
+            // Return the response body as a string
+            return beast::buffers_to_string(res.body().data());
+        } catch (std::exception const& e) {
+            std::cerr << "Error: " << e.what() << std::endl;
+            return "";
+        }
+    }
+
+private:
+    net::io_context ioc_;
+    tcp::resolver resolver_;
+    beast::tcp_stream stream_;
+};
+
 
 class Session {
     private:
@@ -125,13 +177,16 @@ class UserService {
 };
 
 class Application {
-    private:
-        std::shared_ptr<UserService> user_service;
-    public:
-        Application() : user_service(std::make_shared<UserService>()) {}
-        std::shared_ptr<UserService> get_user_service() const { return user_service; }
-        virtual ~Application() = default;
+public:
+    Application() 
+        : user_service_(std::make_shared<UserService>()), client_service_(std::make_shared<ClientService>()) {}
 
+    std::shared_ptr<UserService> get_user_service() const { return user_service_; }
+    std::shared_ptr<ClientService> get_client_service() const { return client_service_; }
+
+private:
+    std::shared_ptr<UserService> user_service_;
+    std::shared_ptr<ClientService> client_service_;
 };
 
 beast::string_view mime_type(beast::string_view path) {
@@ -337,6 +392,18 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
             //response["memory_usage"] = get_memory_usage();
             //response["uptime"] = get_uptime();
             return res_(http::status::ok, response.dump());
+        }
+        if (req.target() == "/external") {
+            try {
+                std::string host = "example.com";
+                std::string port = "80";
+                std::string target = "/path";
+                auto client_service = app->get_client_service();
+                std::string response = client_service->get(host, port, target);
+                return res_(http::status::ok, response, "text/plain");
+            } catch (const std::exception &e) {
+                return res_(http::status::internal_server_error, e.what());
+            }
         }
     }
 
