@@ -123,11 +123,43 @@ void get_server_status() {
     }
 }
 
+void request_index_content(const std::string& session_id) {
+    try {
+        net::io_context ioc;
+        tcp::resolver resolver(ioc);
+        auto const results = resolver.resolve("localhost", "8080");
+        beast::tcp_stream stream(ioc);
+        stream.connect(results);
+
+        http::request<http::empty_body> req{http::verb::get, "/", 11};
+        req.set(http::field::host, "localhost");
+        req.set(http::field::user_agent, BOOST_BEAST_DEPRECATION_STRING);
+
+        if (!session_id.empty()) {
+            req.set("Session-ID", session_id);
+        }
+
+        http::write(stream, req);
+        beast::flat_buffer buffer;
+        http::response<http::dynamic_body> res;
+        http::read(stream, buffer, res);
+
+        std::cout << res << std::endl;
+        std::string body = beast::buffers_to_string(res.body().data());
+        //std::cout << "Response Body: " << body << std::endl;
+        beast::error_code ec;
+        stream.socket().shutdown(tcp::socket::shutdown_both, ec);
+    } catch (std::exception const& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+    }
+}
+
 int main() {
     register_user("test_user", "test_password");
     std::string session_id = login_user("test_user", "test_password");
     if (!session_id.empty()) {
         request_protected_content(session_id);
+        //request_index_content(session_id);
     }
     get_server_status();
     return 0;
