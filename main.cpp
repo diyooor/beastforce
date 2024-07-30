@@ -36,37 +36,21 @@ class ClientService {
 public:
     ClientService() : resolver_(ioc_), stream_(ioc_) {}
 
-    // Perform an HTTP GET request
     std::string get(const std::string& host, const std::string& port, const std::string& target, int version = 11) {
         try {
-            // Look up the domain name
             auto const results = resolver_.resolve(host, port);
-
-            // Make the connection on the IP address we get from a lookup
             net::connect(stream_.socket(), results.begin(), results.end());
-            // Set up an HTTP GET request message
             http::request<http::string_body> req{http::verb::get, target, version};
             req.set(http::field::host, host);
-
-            // Send the HTTP request to the remote host
             http::write(stream_, req);
-
-            // This buffer is used for reading and must be persisted
             beast::flat_buffer buffer;
-
-            // Declare a container to hold the response
             http::response<http::dynamic_body> res;
-
-            // Receive the HTTP response
             http::read(stream_, buffer, res);
-
-            // Gracefully close the socket
             beast::error_code ec;
             stream_.socket().shutdown(tcp::socket::shutdown_both, ec);
             if(ec && ec != beast::errc::not_connected)
                 throw beast::system_error{ec};
 
-            // Return the response body as a string
             return beast::buffers_to_string(res.body().data());
         } catch (std::exception const& e) {
             std::cerr << "Error: " << e.what() << std::endl;
