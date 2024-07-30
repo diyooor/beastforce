@@ -64,6 +64,34 @@ double calculate_cpu_usage(const CPUStats& prev, const CPUStats& curr) {
     return (total_diff - idle_diff) / static_cast<double>(total_diff) * 100.0;
 }
 
+struct MemoryStats {
+    unsigned long long total;
+    unsigned long long free;
+    unsigned long long available;
+};
+
+MemoryStats get_memory_stats() {
+    std::ifstream file("/proc/meminfo");
+    std::string line;
+    MemoryStats stats = {0, 0, 0};
+
+    while (std::getline(file, line)) {
+        std::istringstream iss(line);
+        std::string key;
+        unsigned long long value;
+        std::string unit;
+        iss >> key >> value >> unit;
+        if (key == "MemTotal:") stats.total = value;
+        if (key == "MemFree:") stats.free = value;
+        if (key == "MemAvailable:") stats.available = value;
+    }
+    return stats;
+}
+
+double calculate_memory_usage(const MemoryStats& stats) {
+    return (stats.total - stats.available) / static_cast<double>(stats.total) * 100.0;
+}
+
 class ClientService {
 public:
     ClientService() : resolver_(ioc_), stream_(ioc_) {}
@@ -145,7 +173,7 @@ public:
     bool is_expired() const {
         std::lock_guard<std::mutex> lock(mtx);
         auto now = std::chrono::steady_clock::now();
-        return std::chrono::duration_cast<std::chrono::seconds>(now - last_active).count() > 10;
+        return std::chrono::duration_cast<std::chrono::seconds>(now - last_active).count() > 10000;
     }
 };
 
@@ -293,6 +321,25 @@ public:
         return usage;
     }
 
+    double get_memory_usage() {
+        MemoryStats mem_stats = get_memory_stats();
+        return calculate_memory_usage(mem_stats);
+    }
+    std::string get_uptime() {
+        auto now = std::chrono::steady_clock::now();
+        auto uptime_duration = std::chrono::duration_cast<std::chrono::seconds>(now - start_time);
+        std::chrono::hours hours = std::chrono::duration_cast<std::chrono::hours>(uptime_duration);
+        uptime_duration -= hours;
+        std::chrono::minutes minutes = std::chrono::duration_cast<std::chrono::minutes>(uptime_duration);
+        uptime_duration -= minutes;
+        std::chrono::seconds seconds = std::chrono::duration_cast<std::chrono::seconds>(uptime_duration);
+
+        std::ostringstream uptime_stream;
+        uptime_stream << std::setfill('0') << std::setw(2) << hours.count() << ":"
+                      << std::setfill('0') << std::setw(2) << minutes.count() << ":"
+                      << std::setfill('0') << std::setw(2) << seconds.count();
+        return uptime_stream.str();
+    }
 private:
     std::shared_ptr<UserService> user_service_;
     std::shared_ptr<ClientService> client_service_;
@@ -495,8 +542,8 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
             response["active_connections"] = active_connections.load();
             response["total_requests"] = total_requests.load();
             response["cpu_usage"] = app->get_cpu_usage();
-            //response["memory_usage"] = get_memory_usage();
-            //response["uptime"] = get_uptime();
+            response["memory_usage"] = app->get_memory_usage();
+            response["uptime"] = app->get_uptime();
             return res_(http::status::ok, response.dump());
         }
         if (req.target() == "/external") {
