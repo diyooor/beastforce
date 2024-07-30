@@ -92,11 +92,11 @@
             padding: 20px;
             background: #2c2c2c;
         }
-        /* New CSS for CPU Usage Bar */
-        #cpuUsageBarContainer {
+        /* New CSS for CPU and Memory Usage Bars */
+        .usage-bar-container {
             margin-top: 20px;
         }
-        #cpuUsageBarOuter {
+        .usage-bar-outer {
             width: 100%;
             background-color: #444;
             border-radius: 8px;
@@ -104,13 +104,18 @@
             height: 30px;
             margin-bottom: 10px;
         }
-        #cpuUsageBarInner {
+        .usage-bar-inner {
             height: 100%;
             width: 0%;
-            background-color: #28a745;
             transition: width 0.3s;
         }
-        #cpuUsagePercentage {
+        #cpuUsageBarInner {
+            background-color: #28a745;
+        }
+        #memoryUsageBarInner {
+            background-color: #007bff;
+        }
+        .usage-percentage {
             text-align: center;
             font-size: 16px;
         }
@@ -148,12 +153,23 @@
         <div class="tab-content" id="statusContent">
             <h3>Server Status</h3>
             <p id="statusMessage">Loading...</p>
-            <div id="cpuUsageBarContainer">
+            <div class="usage-bar-container" id="cpuUsageBarContainer">
                 <h3>CPU Usage</h3>
-                <div id="cpuUsageBarOuter">
-                    <div id="cpuUsageBarInner"></div>
+                <div class="usage-bar-outer">
+                    <div id="cpuUsageBarInner" class="usage-bar-inner"></div>
                 </div>
-                <p id="cpuUsagePercentage"></p>
+                <p id="cpuUsagePercentage" class="usage-percentage"></p>
+            </div>
+            <div class="usage-bar-container" id="memoryUsageBarContainer">
+                <h3>Memory Usage</h3>
+                <div class="usage-bar-outer">
+                    <div id="memoryUsageBarInner" class="usage-bar-inner"></div>
+                </div>
+                <p id="memoryUsagePercentage" class="usage-percentage"></p>
+            </div>
+            <div id="uptimeContainer">
+                <h3>Uptime</h3>
+                <p id="uptime"></p>
             </div>
         </div>
         <div class="tab-content hidden" id="changePasswordContent">
@@ -300,10 +316,12 @@
                 .then(response => response.json())
                 .then(data => {
                     statusMessage.innerHTML = `
-                    Active Connections: ${data.active_connections} <br>
+                        Active Connections: ${data.active_connections} <br>
                         Total Requests: ${data.total_requests} <br>
-                        CPU Usage: ${data.cpu_usage}%
-                        `;
+                        CPU Usage: ${data.cpu_usage.toFixed(2)}% <br>
+                        Memory Usage: ${data.memory_usage.toFixed(2)}% <br>
+                        Uptime: ${data.uptime}
+                    `;
 
                     // Update CPU usage bar
                     const cpuUsage = data.cpu_usage;
@@ -312,13 +330,26 @@
 
                     cpuUsageBarInner.style.width = cpuUsage + '%';
                     cpuUsagePercentage.textContent = 'CPU Usage: ' + cpuUsage.toFixed(2) + '%';
+
+                    // Update Memory usage bar
+                    const memoryUsage = data.memory_usage;
+                    const memoryUsageBarInner = document.getElementById('memoryUsageBarInner');
+                    const memoryUsagePercentage = document.getElementById('memoryUsagePercentage');
+
+                    memoryUsageBarInner.style.width = memoryUsage + '%';
+                    memoryUsagePercentage.textContent = 'Memory Usage: ' + memoryUsage.toFixed(2) + '%';
+
+                    // Update Uptime
+                    const uptime = data.uptime;
+                    const uptimeElement = document.getElementById('uptime');
+                    uptimeElement.textContent = uptime;
                 })
                 .catch(error => {
                     statusMessage.innerHTML = `<span>${error.message}</span>`;
                 });
         }
 
-        // Update CPU usage every second
+        // Update CPU, Memory usage, and uptime every second
         setInterval(fetchStatus, 1000);
 
         // Initial call to populate the bar on page load
