@@ -33,6 +33,37 @@ std::atomic<int> active_connections(0);
 std::atomic<int> total_requests(0);
 std::chrono::time_point<std::chrono::steady_clock> start_time = std::chrono::steady_clock::now();
 
+struct CPUStats {
+    unsigned long long user, nice, system, idle;
+};
+
+CPUStats get_cpu_stats() {
+    std::ifstream file("/proc/stat");
+    std::string line;
+    CPUStats stats = {0, 0, 0, 0};
+
+    if (file.is_open()) {
+        std::getline(file, line);
+        std::istringstream iss(line);
+        std::string cpu;
+        iss >> cpu >> stats.user >> stats.nice >> stats.system >> stats.idle;
+    }
+    return stats;
+}
+
+double calculate_cpu_usage(const CPUStats& prev, const CPUStats& curr) {
+    unsigned long long prev_idle = prev.idle;
+    unsigned long long curr_idle = curr.idle;
+
+    unsigned long long prev_total = prev.user + prev.nice + prev.system + prev.idle;
+    unsigned long long curr_total = curr.user + curr.nice + curr.system + curr.idle;
+
+    unsigned long long total_diff = curr_total - prev_total;
+    unsigned long long idle_diff = curr_idle - prev_idle;
+
+    return (total_diff - idle_diff) / static_cast<double>(total_diff) * 100.0;
+}
+
 class ClientService {
 public:
     ClientService() : resolver_(ioc_), stream_(ioc_) {}
@@ -114,7 +145,7 @@ public:
     bool is_expired() const {
         std::lock_guard<std::mutex> lock(mtx);
         auto now = std::chrono::steady_clock::now();
-        return std::chrono::duration_cast<std::chrono::seconds>(now - last_active).count() > 5;
+        return std::chrono::duration_cast<std::chrono::seconds>(now - last_active).count() > 10;
     }
 };
 
@@ -255,9 +286,17 @@ public:
     std::shared_ptr<UserService> get_user_service() const { return user_service_; }
     std::shared_ptr<ClientService> get_client_service() const { return client_service_; }
 
+    double get_cpu_usage() {
+        CPUStats curr_stats = get_cpu_stats();
+        double usage = calculate_cpu_usage(prev_cpu_stats_, curr_stats);
+        prev_cpu_stats_ = curr_stats;
+        return usage;
+    }
+
 private:
     std::shared_ptr<UserService> user_service_;
     std::shared_ptr<ClientService> client_service_;
+    CPUStats prev_cpu_stats_;
 };
 
 beast::string_view mime_type(beast::string_view path) {
@@ -455,7 +494,7 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
             json response;
             response["active_connections"] = active_connections.load();
             response["total_requests"] = total_requests.load();
-            //response["cpu_usage"] = get_cpu_usage();
+            response["cpu_usage"] = app->get_cpu_usage();
             //response["memory_usage"] = get_memory_usage();
             //response["uptime"] = get_uptime();
             return res_(http::status::ok, response.dump());
