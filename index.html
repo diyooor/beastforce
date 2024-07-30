@@ -120,11 +120,20 @@
         <h2>Dashboard</h2>
         <div class="tabs">
             <div class="tab active" data-tab="status">Server Status</div>
-            <!-- Add more tabs here if needed -->
+            <div class="tab" data-tab="changePassword">Change Password</div>
         </div>
         <div class="tab-content" id="statusContent">
             <h3>Server Status</h3>
             <p id="statusMessage">Loading...</p>
+        </div>
+        <div class="tab-content hidden" id="changePasswordContent">
+            <h3>Change Password</h3>
+            <form id="passwordForm">
+                <input type="password" id="currentPassword" name="current_password" placeholder="Current Password" required>
+                <input type="password" id="newPassword" name="new_password" placeholder="New Password" required>
+                <button type="submit">Change Password</button>
+            </form>
+            <div class="message" id="passwordMessage"></div>
         </div>
         <button id="logoutButton">Logout</button>
     </div>
@@ -136,6 +145,7 @@
         const loginMessage = document.getElementById('loginMessage');
         const registerMessage = document.getElementById('registerMessage');
         const statusMessage = document.getElementById('statusMessage');
+        const passwordMessage = document.getElementById('passwordMessage');
 
         // Check if user is already logged in
         if (localStorage.getItem('session_id')) {
@@ -204,11 +214,33 @@
             }
         });
 
-        document.getElementById('logoutButton').addEventListener('click', function() {
-            localStorage.removeItem('session_id');
-            loginContainer.style.display = 'block';
-            registerContainer.style.display = 'none';
-            dashboard.classList.remove('active');
+        document.getElementById('logoutButton').addEventListener('click', async function() {
+            const session_id = localStorage.getItem('session_id');
+
+            if (session_id) {
+                try {
+                    const response = await fetch('/logout', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ session_id }),
+                    });
+
+                    const result = await response.json();
+
+                    if (response.ok && result.success === 'true') {
+                        localStorage.removeItem('session_id');
+                        loginContainer.style.display = 'block';
+                        registerContainer.style.display = 'none';
+                        dashboard.classList.remove('active');
+                    } else {
+                        console.error(result.error || 'Logout failed');
+                    }
+                } catch (error) {
+                    console.error(error.message);
+                }
+            }
         });
 
         document.getElementById('showRegister').addEventListener('click', function() {
@@ -236,14 +268,43 @@
                 });
         }
 
+        // Change Password functionality
+        document.getElementById('passwordForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+
+            const current_password = document.getElementById('currentPassword').value;
+            const new_password = document.getElementById('newPassword').value;
+            const session_id = localStorage.getItem('session_id');
+
+            try {
+                const response = await fetch('/password', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ session_id, current_password, new_password }),
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success === 'true') {
+                    passwordMessage.innerHTML = `<span>Password changed successfully</span>`;
+                } else {
+                    passwordMessage.innerHTML = `<span>${result.error || 'Password change failed'}</span>`;
+                }
+            } catch (error) {
+                passwordMessage.innerHTML = `<span>${error.message}</span>`;
+            }
+        });
+
         // Tab functionality
         document.querySelectorAll('.tab').forEach(tab => {
             tab.addEventListener('click', function() {
                 document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-                document.querySelectorAll('.tab-content').forEach(content => content.style.display = 'none');
+                document.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
 
                 tab.classList.add('active');
-                document.getElementById(`${tab.dataset.tab}Content`).style.display = 'block';
+                document.getElementById(`${tab.dataset.tab}Content`).classList.remove('hidden');
             });
         });
 
