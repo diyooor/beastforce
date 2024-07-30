@@ -28,21 +28,8 @@ using json = nlohmann::json;
 std::atomic<int> active_connections(0);
 std::atomic<int> total_requests(0);
 std::chrono::time_point<std::chrono::steady_clock> start_time = std::chrono::steady_clock::now();
-/*
- * Cloudflare like server connection intermediary thing?
- */
 
-/*
- * 
- * /login POST username password
- * if session exists (for now) login fail
- * if session doesnt exist & login is good then create session
- * *bonus* if user leaves page session automatically destroyed
- *
- * /logout
- * /protected?logout makes more sense than ^
- */
-struct Session {
+class Session {
     private:
         int id;
         std::string session_id;
@@ -66,7 +53,10 @@ class User {
         int get_id() const { return id; }
         std::string get_username() const { return username; }
         std::string get_password() const { return password; }
-        Session get_session() const { return session; }       
+        Session get_session() const { return session; }
+        void invalidate_session() {
+            session.set_session_id("");
+        }
         void generate_session_id() {
             std::string chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
             std::mt19937 gen(static_cast<unsigned long>(time(0)));
@@ -89,7 +79,7 @@ class UserService {
             users.emplace_back(user); 
             std::cout << user.get_id() << " " << user.get_username() << " " << user.get_password() << std::endl;
         }
-        int get_users_size() const { return users.size(); }
+        int get_users_size() const { return users.size(); } 
 
         bool validate_login(const std::string& username, const std::string& password) {
             std::lock_guard<std::mutex> lock(mtx);
@@ -120,6 +110,18 @@ class UserService {
             }
             return false;
         }
+        bool invalidate_session(const std::string& session_id) {
+            std::lock_guard<std::mutex> lock(mtx);
+            for (auto& user : users) {
+                if (user.get_session().get_session_id() == session_id) {
+                    user.invalidate_session();
+                    return true;
+                }
+            }
+            return false;
+        }
+        std::vector<User>& get_users() { return users; }
+        std::mutex& get_mutex() { return mtx; }
 };
 
 class Application {
@@ -255,6 +257,64 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
                 }
             } catch (const std::exception &e) {
                 return res_(http::status::internal_server_error, e.what());
+            }
+        }
+        if (req.target() == "/password") {
+            try {
+                json req_ = json::parse(req.body());
+                auto user_service = app->get_user_service();
+
+                if (!req_.contains("session_id") || req_["session_id"].is_null()) {
+                    return res_(http::status::bad_request, "session_id is missing or null");
+                }
+
+                std::string session_id = req_["session_id"];
+                if (!user_service->is_session_valid(session_id)) {
+                    return res_(http::status::unauthorized, "Invalid session");
+                }
+
+                std::string current_password = req_["current_password"];
+                std::string new_password = req_["new_password"];
+
+                std::lock_guard<std::mutex> lock(user_service->get_mutex());
+                for (auto& user : user_service->get_users()) {
+                    if (user.get_session().get_session_id() == session_id) {
+                        if (user.get_password() != current_password) {
+                            return res_(http::status::unauthorized, "Current password is incorrect");
+                        }
+                        user.set_password(new_password);
+                        json response;
+                        response["success"] = "true";
+                        return res_(http::status::ok, response.dump());
+                    }
+                }
+            } catch (const std::exception& e) {
+                json response;
+                response["success"] = "false";
+                response["error"] = e.what();
+                return res_(http::status::internal_server_error, response.dump());
+            }
+        }
+        if (req.target() == "/logout") {
+            try {
+                json req_ = json::parse(req.body());
+                auto user_service = app->get_user_service();
+                if (!req_.contains("session_id") || req_["session_id"].is_null()) {
+                    return res_(http::status::bad_request, "session_id is missing or null");
+                }
+                std::string session_id = req_["session_id"];
+                if (user_service->invalidate_session(session_id)) {
+                    json response;
+                    response["success"] = "true";
+                    return res_(http::status::ok, response.dump());
+                } else {
+                    return res_(http::status::unauthorized, "Invalid session");
+                }
+            } catch (const std::exception &e) {
+                json response;
+                response["success"] = "false";
+                response["error"] = e.what();
+                return res_(http::status::internal_server_error, response.dump());
             }
         }
     }
