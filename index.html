@@ -147,11 +147,22 @@
         const statusMessage = document.getElementById('statusMessage');
         const passwordMessage = document.getElementById('passwordMessage');
 
-        // Check if user is already logged in
-        if (localStorage.getItem('session_id')) {
+        function showScreen(screen) {
             loginContainer.style.display = 'none';
             registerContainer.style.display = 'none';
-            dashboard.classList.add('active');
+            dashboard.classList.remove('active');
+            if (screen === 'login') {
+                loginContainer.style.display = 'block';
+            } else if (screen === 'register') {
+                registerContainer.style.display = 'block';
+            } else if (screen === 'dashboard') {
+                dashboard.classList.add('active');
+            }
+        }
+
+        // Check if user is already logged in
+        if (localStorage.getItem('session_id')) {
+            showScreen('dashboard');
             fetchStatus();
             validateSession(); // Initial session validation
         }
@@ -175,9 +186,7 @@
 
                 if (response.ok && result.success === 'true') {
                     localStorage.setItem('session_id', result.session_id);
-                    loginContainer.style.display = 'none';
-                    registerContainer.style.display = 'none';
-                    dashboard.classList.add('active');
+                    showScreen('dashboard');
                     fetchStatus();  // Fetch server status after successful login
                     startSessionValidation(); // Start periodic session validation
                 } else {
@@ -208,8 +217,7 @@
                 if (response.ok && result.success === 'true') {
                     registerMessage.innerHTML = `<span style="color: green;">Registration successful</span>`;
                     setTimeout(() => {
-                        registerContainer.style.display = 'none';
-                        loginContainer.style.display = 'block';
+                        showScreen('login');
                     }, 2000); // Display message for 2 seconds before redirecting
                 } else {
                     registerMessage.innerHTML = `<span>${result.error || 'Registration failed'}</span>`;
@@ -236,9 +244,7 @@
 
                     if (response.ok && result.success === 'true') {
                         localStorage.removeItem('session_id');
-                        loginContainer.style.display = 'block';
-                        registerContainer.style.display = 'none';
-                        dashboard.classList.remove('active');
+                        showScreen('login');
                         stopSessionValidation(); // Stop session validation
                     } else {
                         console.error(result.error || 'Logout failed');
@@ -250,14 +256,12 @@
         });
 
         document.getElementById('showRegister').addEventListener('click', function() {
-            loginContainer.style.display = 'none';
-            registerContainer.style.display = 'block';
+            showScreen('register');
             loginMessage.innerHTML = ''; // Reset message text
         });
 
         document.getElementById('showLogin').addEventListener('click', function() {
-            registerContainer.style.display = 'none';
-            loginContainer.style.display = 'block';
+            showScreen('login');
             registerMessage.innerHTML = ''; // Reset message text
         });
 
@@ -267,8 +271,8 @@
                 .then(data => {
                     statusMessage.innerHTML = `
                         Active Connections: ${data.active_connections} <br>
-                        Total Requests: ${data.total_requests}
-                        <!-- Add more data fields here if needed -->
+                        Total Requests: ${data.total_requests} <br>
+                        CPU Usage: ${data.cpu_usage}%
                     `;
                 })
                 .catch(error => {
@@ -323,7 +327,7 @@
         let sessionValidationInterval;
 
         function startSessionValidation() {
-            sessionValidationInterval = setInterval(validateSession, 1000); // Validate session every 5 seconds
+            sessionValidationInterval = setInterval(validateSession, 5000); // Validate session every 5 seconds
         }
 
         function stopSessionValidation() {
@@ -339,9 +343,7 @@
 
                     if (data.success === 'false') {
                         localStorage.removeItem('session_id');
-                        loginContainer.style.display = 'block';
-                        registerContainer.style.display = 'none';
-                        dashboard.classList.remove('active');
+                        showScreen('login');
                         stopSessionValidation();
                     }
                 } catch (error) {
