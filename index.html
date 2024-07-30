@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login and Register</title>
     <style>
+        /* Existing CSS */
         body {
             font-family: Arial, sans-serif;
             background-color: #1e1e1e;
@@ -91,6 +92,28 @@
             padding: 20px;
             background: #2c2c2c;
         }
+        /* New CSS for CPU Usage Bar */
+        #cpuUsageBarContainer {
+            margin-top: 20px;
+        }
+        #cpuUsageBarOuter {
+            width: 100%;
+            background-color: #444;
+            border-radius: 8px;
+            overflow: hidden;
+            height: 30px;
+            margin-bottom: 10px;
+        }
+        #cpuUsageBarInner {
+            height: 100%;
+            width: 0%;
+            background-color: #28a745;
+            transition: width 0.3s;
+        }
+        #cpuUsagePercentage {
+            text-align: center;
+            font-size: 16px;
+        }
     </style>
 </head>
 <body>
@@ -125,6 +148,13 @@
         <div class="tab-content" id="statusContent">
             <h3>Server Status</h3>
             <p id="statusMessage">Loading...</p>
+            <div id="cpuUsageBarContainer">
+                <h3>CPU Usage</h3>
+                <div id="cpuUsageBarOuter">
+                    <div id="cpuUsageBarInner"></div>
+                </div>
+                <p id="cpuUsagePercentage"></p>
+            </div>
         </div>
         <div class="tab-content hidden" id="changePasswordContent">
             <h3>Change Password</h3>
@@ -270,15 +300,29 @@
                 .then(response => response.json())
                 .then(data => {
                     statusMessage.innerHTML = `
-                        Active Connections: ${data.active_connections} <br>
+                    Active Connections: ${data.active_connections} <br>
                         Total Requests: ${data.total_requests} <br>
                         CPU Usage: ${data.cpu_usage}%
-                    `;
+                        `;
+
+                    // Update CPU usage bar
+                    const cpuUsage = data.cpu_usage;
+                    const cpuUsageBarInner = document.getElementById('cpuUsageBarInner');
+                    const cpuUsagePercentage = document.getElementById('cpuUsagePercentage');
+
+                    cpuUsageBarInner.style.width = cpuUsage + '%';
+                    cpuUsagePercentage.textContent = 'CPU Usage: ' + cpuUsage.toFixed(2) + '%';
                 })
                 .catch(error => {
                     statusMessage.innerHTML = `<span>${error.message}</span>`;
                 });
         }
+
+        // Update CPU usage every second
+        setInterval(fetchStatus, 1000);
+
+        // Initial call to populate the bar on page load
+        fetchStatus();
 
         // Change Password functionality
         document.getElementById('passwordForm').addEventListener('submit', async function(event) {
