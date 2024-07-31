@@ -77,6 +77,4 @@ super later down the line
 ---
 
 ## Screenshots
-![Alt text](images/22.gif)
-### Allocate memory used with > 1 thread
-![Alt text](images/33.gif)
+- check images
