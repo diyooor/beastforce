@@ -83,7 +83,7 @@ MemoryStats get_memory_stats() {
         unsigned long long value;
         std::string unit;
         iss >> key >> value >> unit;
-        key.pop_back(); // Remove trailing ':'
+        key.pop_back();
         stats_map[key] = value;
     }
 
@@ -136,19 +136,14 @@ private:
 };
 
 class Session {
-private:
-    std::string session_id;
-    std::chrono::time_point<std::chrono::steady_clock> last_active;
-    mutable std::mutex mtx;
+
 
 public:
     Session() : last_active(std::chrono::steady_clock::now()) {}
 
-    // Delete copy constructor and copy assignment operator
     Session(const Session&) = delete;
     Session& operator=(const Session&) = delete;
 
-    // Define move constructor and move assignment operator
     Session(Session&& other) noexcept {
         std::lock_guard<std::mutex> lock(other.mtx);
         session_id = std::move(other.session_id);
@@ -186,23 +181,19 @@ public:
         auto now = std::chrono::steady_clock::now();
         return std::chrono::duration_cast<std::chrono::seconds>(now - last_active).count() > 10000;
     }
+private:
+    std::string session_id;
+    std::chrono::time_point<std::chrono::steady_clock> last_active;
+    mutable std::mutex mtx;
 };
 
 class User {
-private:
-    int id;
-    std::string username;
-    std::string password;
-    Session session;
-
 public:
     User() = default;
 
-    // Delete copy constructor and copy assignment operator
     User(const User&) = delete;
     User& operator=(const User&) = delete;
 
-    // Define move constructor and move assignment operator
     User(User&& other) noexcept
         : id(other.id),
         username(std::move(other.username)),
@@ -241,12 +232,17 @@ public:
         }
         session.set_session_id(session_id);
     }
+private:
+    int id;
+    std::string username;
+    std::string password;
+    Session session;
+
+
 };
 
 class UserService {
-private:
-    std::vector<User> users;
-    std::mutex mtx;
+
 
 public:
     void add_user(User user) {
@@ -315,6 +311,9 @@ public:
 
     std::vector<User>& get_users() { return users; }
     std::mutex& get_mutex() { return mtx; }
+private:
+    std::vector<User> users;
+    std::mutex mtx;
 };
 
 class Application {
@@ -686,12 +685,10 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
     return res;
 }
 
-// Log errors
 void fail(beast::error_code ec, char const* what) {
     std::cerr << what << ": " << ec.message() << "\n";
 }
 
-// Handle an HTTP session
 class session : public std::enable_shared_from_this<session> {
     beast::tcp_stream stream_;
     beast::flat_buffer buffer_;
@@ -746,7 +743,6 @@ private:
     }
 };
 
-// Listen for incoming connections
 class listener : public std::enable_shared_from_this<listener> {
     net::io_context& ioc_;
     tcp::acceptor acceptor_;
@@ -788,7 +784,6 @@ private:
     }
 };
 
-// Background function to check and invalidate expired sessions
 void session_timeout_checker(std::shared_ptr<UserService> user_service) {
     while (true) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -796,7 +791,6 @@ void session_timeout_checker(std::shared_ptr<UserService> user_service) {
     }
 }
 
-// Main function to start the server
 int main(int argc, char* argv[]) {
     if (argc != 5) {
         std::cerr << "Usage: http-server-async <address> <port> <doc_root> <threads>\n"
