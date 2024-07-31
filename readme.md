@@ -5,10 +5,10 @@
 A simple web application built on top of boost beast. 
 
 ## Roadmap (what do I want to do for the next 9999 years)
-[x] user roles (admin/non-admin)
-    [x] need to add role to the json response of validate session
-[x] admin dashboard () (maybe the easiest with user roles -- to do today)
-    [x] need to add additional div elements to the client and separate them by the role retrieved from the session
+- [x] user roles (admin/non-admin)
+    - [x] need to add role to the json response of validate session
+- [x] admin dashboard () (maybe the easiest with user roles -- to do today)
+    - [x] need to add additional div elements to the client and separate them by the role retrieved from the session
 
 - support tickets
     - need to add a tab for support tickets in both admin and non-admin dashboard 
