@@ -68,12 +68,14 @@ struct MemoryStats {
     unsigned long long total;
     unsigned long long free;
     unsigned long long available;
+    unsigned long long buffers;
+    unsigned long long cached;
 };
 
 MemoryStats get_memory_stats() {
     std::ifstream file("/proc/meminfo");
     std::string line;
-    MemoryStats stats = {0, 0, 0};
+    std::unordered_map<std::string, unsigned long long> stats_map;
 
     while (std::getline(file, line)) {
         std::istringstream iss(line);
@@ -81,16 +83,28 @@ MemoryStats get_memory_stats() {
         unsigned long long value;
         std::string unit;
         iss >> key >> value >> unit;
-        if (key == "MemTotal:") stats.total = value;
-        if (key == "MemFree:") stats.free = value;
-        if (key == "MemAvailable:") stats.available = value;
+        key.pop_back(); // Remove trailing ':'
+        stats_map[key] = value;
     }
+
+    MemoryStats stats = {
+        stats_map["MemTotal"],
+        stats_map["MemFree"],
+        stats_map["MemAvailable"],
+        stats_map["Buffers"],
+        stats_map["Cached"]
+    };
+
     return stats;
 }
 
+
+
 double calculate_memory_usage(const MemoryStats& stats) {
-    return (stats.total - stats.available) / static_cast<double>(stats.total) * 100.0;
+    unsigned long long used_memory = stats.total - stats.free - stats.buffers - stats.cached;
+    return (used_memory / static_cast<double>(stats.total)) * 100.0;
 }
+
 
 class ClientService {
 public:
@@ -325,6 +339,7 @@ public:
         MemoryStats mem_stats = get_memory_stats();
         return calculate_memory_usage(mem_stats);
     }
+    
     std::string get_uptime() {
         auto now = std::chrono::steady_clock::now();
         auto uptime_duration = std::chrono::duration_cast<std::chrono::seconds>(now - start_time);
@@ -340,6 +355,7 @@ public:
                       << std::setfill('0') << std::setw(2) << seconds.count();
         return uptime_stream.str();
     }
+
 private:
     std::shared_ptr<UserService> user_service_;
     std::shared_ptr<ClientService> client_service_;
@@ -538,12 +554,16 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
         if (req.target().back() == '/')
             path.append("index.html");
         if (req.target() == "/status") {
-            json response;
-            response["active_connections"] = active_connections.load();
-            response["total_requests"] = total_requests.load();
-            response["cpu_usage"] = app->get_cpu_usage();
-            response["memory_usage"] = app->get_memory_usage();
-            response["uptime"] = app->get_uptime();
+            auto memory_usage = app->get_memory_usage();
+            auto cpu_usage = app->get_cpu_usage();
+            auto uptime = app->get_uptime();
+            json response = {
+                {"active_connections", active_connections.load()},
+                {"total_requests", total_requests.load()},
+                {"cpu_usage", cpu_usage},
+                {"memory_usage", memory_usage},
+                {"uptime", uptime}
+            };
             return res_(http::status::ok, response.dump());
         }
         if (req.target() == "/external") {

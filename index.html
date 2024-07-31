@@ -316,7 +316,7 @@
                 .then(response => response.json())
                 .then(data => {
                     statusMessage.innerHTML = `
-                        Active Connections: ${data.active_connections} <br>
+                    Active Connections: ${data.active_connections} <br>
                         Total Requests: ${data.total_requests} <br>
                         CPU Usage: ${data.cpu_usage.toFixed(2)}% <br>
                         Memory Usage: ${data.memory_usage.toFixed(2)}% <br>
