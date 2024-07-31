@@ -102,42 +102,7 @@ double calculate_memory_usage(const MemoryStats& stats) {
     unsigned long long used_memory = stats.total - stats.free - stats.buffers - stats.cached;
     return (used_memory / static_cast<double>(stats.total)) * 100.0;
 }
-
-class ClientService {
-    public:
-        ClientService() : resolver_(ioc_), stream_(ioc_) {}
-
-        std::string get(const std::string& host, const std::string& port, const std::string& target, int version = 11) {
-            try {
-                auto const results = resolver_.resolve(host, port);
-                net::connect(stream_.socket(), results.begin(), results.end());
-                http::request<http::string_body> req{http::verb::get, target, version};
-                req.set(http::field::host, host);
-                http::write(stream_, req);
-                beast::flat_buffer buffer;
-                http::response<http::dynamic_body> res;
-                http::read(stream_, buffer, res);
-                beast::error_code ec;
-                stream_.socket().shutdown(tcp::socket::shutdown_both, ec);
-                if(ec && ec != beast::errc::not_connected)
-                    throw beast::system_error{ec};
-
-                return beast::buffers_to_string(res.body().data());
-            } catch (std::exception const& e) {
-                std::cerr << "Error: " << e.what() << std::endl;
-                return "";
-            }
-        }
-
-    private:
-        net::io_context ioc_;
-        tcp::resolver resolver_;
-        beast::tcp_stream stream_;
-};
-
 class Session {
-
-
     public:
         Session() : last_active(std::chrono::steady_clock::now()) {}
 
@@ -314,6 +279,38 @@ class UserService {
     private:
         std::vector<User> users;
         std::mutex mtx;
+};
+
+class ClientService {
+    public:
+        ClientService() : resolver_(ioc_), stream_(ioc_) {}
+
+        std::string get(const std::string& host, const std::string& port, const std::string& target, int version = 11) {
+            try {
+                auto const results = resolver_.resolve(host, port);
+                net::connect(stream_.socket(), results.begin(), results.end());
+                http::request<http::string_body> req{http::verb::get, target, version};
+                req.set(http::field::host, host);
+                http::write(stream_, req);
+                beast::flat_buffer buffer;
+                http::response<http::dynamic_body> res;
+                http::read(stream_, buffer, res);
+                beast::error_code ec;
+                stream_.socket().shutdown(tcp::socket::shutdown_both, ec);
+                if(ec && ec != beast::errc::not_connected)
+                    throw beast::system_error{ec};
+
+                return beast::buffers_to_string(res.body().data());
+            } catch (std::exception const& e) {
+                std::cerr << "Error: " << e.what() << std::endl;
+                return "";
+            }
+        }
+
+    private:
+        net::io_context ioc_;
+        tcp::resolver resolver_;
+        beast::tcp_stream stream_;
 };
 
 class Application {
