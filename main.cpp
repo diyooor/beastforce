@@ -102,19 +102,17 @@ double calculate_memory_usage(const MemoryStats& stats) {
     unsigned long long used_memory = stats.total - stats.free - stats.buffers - stats.cached;
     return (used_memory / static_cast<double>(stats.total)) * 100.0;
 }
+
 class Session {
     public:
         Session() : last_active(std::chrono::steady_clock::now()) {}
-
         Session(const Session&) = delete;
         Session& operator=(const Session&) = delete;
-
         Session(Session&& other) noexcept {
             std::lock_guard<std::mutex> lock(other.mtx);
             session_id = std::move(other.session_id);
             last_active = other.last_active;
         }
-
         Session& operator=(Session&& other) noexcept {
             if (this != &other) {
                 std::lock_guard<std::mutex> lock1(mtx);
@@ -124,23 +122,19 @@ class Session {
             }
             return *this;
         }
-
         void set_session_id(std::string session_id_) {
             std::lock_guard<std::mutex> lock(mtx);
             session_id = session_id_;
             last_active = std::chrono::steady_clock::now();
         }
-
         std::string get_session_id() const {
             std::lock_guard<std::mutex> lock(mtx);
             return session_id;
         }
-
         void update_last_active() {
             std::lock_guard<std::mutex> lock(mtx);
             last_active = std::chrono::steady_clock::now();
         }
-
         bool is_expired() const {
             std::lock_guard<std::mutex> lock(mtx);
             auto now = std::chrono::steady_clock::now();
@@ -151,6 +145,8 @@ class Session {
         std::chrono::time_point<std::chrono::steady_clock> last_active;
         mutable std::mutex mtx;
 };
+
+enum Role { admin, normal };
 
 class User {
     public:
@@ -163,7 +159,8 @@ class User {
             : id(other.id),
             username(std::move(other.username)),
             password(std::move(other.password)),
-            session(std::move(other.session)) {}
+            session(std::move(other.session)),
+            role(std::move(other.role)) {}
 
         User& operator=(User&& other) noexcept {
             if (this != &other) {
@@ -179,10 +176,12 @@ class User {
         void set_username(std::string username_) { username = std::move(username_); }
         void set_password(std::string password_) { password = std::move(password_); }
         void set_session(Session session_) { session = std::move(session_); }
+        void set_role(Role role_) { role = std::move(role_); } 
         int get_id() const { return id; }
         std::string get_username() const { return username; }
         std::string get_password() const { return password; }
         const Session& get_session() const { return session; }
+        Role get_role() const { return role; }
         void invalidate_session() {
             session.set_session_id("");
         }
@@ -202,13 +201,10 @@ class User {
         std::string username;
         std::string password;
         Session session;
-
-
+        Role role; 
 };
 
 class UserService {
-
-
     public:
         void add_user(User user) {
             std::lock_guard<std::mutex> lock(mtx);
@@ -240,10 +236,19 @@ class UserService {
             return "";
         }
 
+        int get_session_role(const std::string& session_id) const {
+            for (const auto& user : users) { 
+                if (user.get_session().get_session_id() == session_id) {
+                    return user.get_role();
+                }
+            }
+            return -1;
+        }
+
         bool is_session_valid(const std::string& session_id) const {
             for (const auto& user : users) {
                 if (user.get_session().get_session_id() == session_id) {
-                    std::cout << "Session ID " << session_id << " is valid for user " << user.get_username() << std::endl;
+                    std::cout << "Session ID " << session_id << " is valid for user " << user.get_username() << " role: " << user.get_role() << std::endl;
                     return true;
                 }
             }
@@ -445,6 +450,7 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
             try {
                 json req_ = json::parse(req.body());
                 User user_;
+                user_.set_role(admin);
                 user_.set_username(req_["username"]);
                 user_.set_password(req_["password"]);
                 auto user_service = app->get_user_service();
@@ -644,7 +650,8 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
                 if (user_service->is_session_valid(session_id_param)) {
                     json response;
                     response["success"] = "true";
-                    return res_(http::status::ok, response.dump());
+                    response["role"] = user_service->get_session_role(session_id_param);
+                        return res_(http::status::ok, response.dump());
                 } else {
                     json response;
                     response["success"] = "false";
