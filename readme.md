@@ -4,13 +4,36 @@
 
 A simple web application built on top of boost beast. 
 
+## Roadmap (what do I want to do for the next 9999 years)
+[x] user roles (admin/non-admin)
+    [x] need to add role to the json response of validate session
+[x] admin dashboard () (maybe the easiest with user roles -- to do today)
+    [x] need to add additional div elements to the client and separate them by the role retrieved from the session
+
+- support tickets
+    - need to add a tab for support tickets in both admin and non-admin dashboard 
+- support chat
+    - pop up chat box would be cool here
+- catalog (items in a shop)
+    - need to separate the login and actual home landing page which would be a catalog of items to buy in this case
+- calendar scheduling (date time appointments with availablity)
+    - add a normal user tab and admin tab for calendar availability and scheduling
+    - also need a object for calendar
+- payment processing (stripe for calendar scheduling and catalog)
+    - use the ClientService within the create-stripe-checkout endpoint
+- other user account management things (delete account, password recovery once email functionality is set up)
+- calendar scheduling (schedule date/time appointments with payment)
+-
+super later down the line
+- smtp/pop3/imap integration (can see emails within admin dashboard)
+
 ## Features
 
 - User login and registration
 - Password change
 - Server status dashboard (CPU usage, requests, etc.)
 - Timed session management
-- 
+- Allocate/deallocate system memory
 ## Files
 
 - `index.html`: Frontend HTML and CSS
