@@ -104,139 +104,139 @@ double calculate_memory_usage(const MemoryStats& stats) {
 }
 
 class ClientService {
-public:
-    ClientService() : resolver_(ioc_), stream_(ioc_) {}
+    public:
+        ClientService() : resolver_(ioc_), stream_(ioc_) {}
 
-    std::string get(const std::string& host, const std::string& port, const std::string& target, int version = 11) {
-        try {
-            auto const results = resolver_.resolve(host, port);
-            net::connect(stream_.socket(), results.begin(), results.end());
-            http::request<http::string_body> req{http::verb::get, target, version};
-            req.set(http::field::host, host);
-            http::write(stream_, req);
-            beast::flat_buffer buffer;
-            http::response<http::dynamic_body> res;
-            http::read(stream_, buffer, res);
-            beast::error_code ec;
-            stream_.socket().shutdown(tcp::socket::shutdown_both, ec);
-            if(ec && ec != beast::errc::not_connected)
-                throw beast::system_error{ec};
+        std::string get(const std::string& host, const std::string& port, const std::string& target, int version = 11) {
+            try {
+                auto const results = resolver_.resolve(host, port);
+                net::connect(stream_.socket(), results.begin(), results.end());
+                http::request<http::string_body> req{http::verb::get, target, version};
+                req.set(http::field::host, host);
+                http::write(stream_, req);
+                beast::flat_buffer buffer;
+                http::response<http::dynamic_body> res;
+                http::read(stream_, buffer, res);
+                beast::error_code ec;
+                stream_.socket().shutdown(tcp::socket::shutdown_both, ec);
+                if(ec && ec != beast::errc::not_connected)
+                    throw beast::system_error{ec};
 
-            return beast::buffers_to_string(res.body().data());
-        } catch (std::exception const& e) {
-            std::cerr << "Error: " << e.what() << std::endl;
-            return "";
+                return beast::buffers_to_string(res.body().data());
+            } catch (std::exception const& e) {
+                std::cerr << "Error: " << e.what() << std::endl;
+                return "";
+            }
         }
-    }
 
-private:
-    net::io_context ioc_;
-    tcp::resolver resolver_;
-    beast::tcp_stream stream_;
+    private:
+        net::io_context ioc_;
+        tcp::resolver resolver_;
+        beast::tcp_stream stream_;
 };
 
 class Session {
 
 
-public:
-    Session() : last_active(std::chrono::steady_clock::now()) {}
+    public:
+        Session() : last_active(std::chrono::steady_clock::now()) {}
 
-    Session(const Session&) = delete;
-    Session& operator=(const Session&) = delete;
+        Session(const Session&) = delete;
+        Session& operator=(const Session&) = delete;
 
-    Session(Session&& other) noexcept {
-        std::lock_guard<std::mutex> lock(other.mtx);
-        session_id = std::move(other.session_id);
-        last_active = other.last_active;
-    }
-
-    Session& operator=(Session&& other) noexcept {
-        if (this != &other) {
-            std::lock_guard<std::mutex> lock1(mtx);
-            std::lock_guard<std::mutex> lock2(other.mtx);
+        Session(Session&& other) noexcept {
+            std::lock_guard<std::mutex> lock(other.mtx);
             session_id = std::move(other.session_id);
             last_active = other.last_active;
         }
-        return *this;
-    }
 
-    void set_session_id(std::string session_id_) {
-        std::lock_guard<std::mutex> lock(mtx);
-        session_id = session_id_;
-        last_active = std::chrono::steady_clock::now();
-    }
+        Session& operator=(Session&& other) noexcept {
+            if (this != &other) {
+                std::lock_guard<std::mutex> lock1(mtx);
+                std::lock_guard<std::mutex> lock2(other.mtx);
+                session_id = std::move(other.session_id);
+                last_active = other.last_active;
+            }
+            return *this;
+        }
 
-    std::string get_session_id() const {
-        std::lock_guard<std::mutex> lock(mtx);
-        return session_id;
-    }
+        void set_session_id(std::string session_id_) {
+            std::lock_guard<std::mutex> lock(mtx);
+            session_id = session_id_;
+            last_active = std::chrono::steady_clock::now();
+        }
 
-    void update_last_active() {
-        std::lock_guard<std::mutex> lock(mtx);
-        last_active = std::chrono::steady_clock::now();
-    }
+        std::string get_session_id() const {
+            std::lock_guard<std::mutex> lock(mtx);
+            return session_id;
+        }
 
-    bool is_expired() const {
-        std::lock_guard<std::mutex> lock(mtx);
-        auto now = std::chrono::steady_clock::now();
-        return std::chrono::duration_cast<std::chrono::seconds>(now - last_active).count() > 10000;
-    }
-private:
-    std::string session_id;
-    std::chrono::time_point<std::chrono::steady_clock> last_active;
-    mutable std::mutex mtx;
+        void update_last_active() {
+            std::lock_guard<std::mutex> lock(mtx);
+            last_active = std::chrono::steady_clock::now();
+        }
+
+        bool is_expired() const {
+            std::lock_guard<std::mutex> lock(mtx);
+            auto now = std::chrono::steady_clock::now();
+            return std::chrono::duration_cast<std::chrono::seconds>(now - last_active).count() > 10000;
+        }
+    private:
+        std::string session_id;
+        std::chrono::time_point<std::chrono::steady_clock> last_active;
+        mutable std::mutex mtx;
 };
 
 class User {
-public:
-    User() = default;
+    public:
+        User() = default;
 
-    User(const User&) = delete;
-    User& operator=(const User&) = delete;
+        User(const User&) = delete;
+        User& operator=(const User&) = delete;
 
-    User(User&& other) noexcept
-        : id(other.id),
-        username(std::move(other.username)),
-        password(std::move(other.password)),
-        session(std::move(other.session)) {}
+        User(User&& other) noexcept
+            : id(other.id),
+            username(std::move(other.username)),
+            password(std::move(other.password)),
+            session(std::move(other.session)) {}
 
-    User& operator=(User&& other) noexcept {
-        if (this != &other) {
-            id = other.id;
-            username = std::move(other.username);
-            password = std::move(other.password);
-            session = std::move(other.session);
+        User& operator=(User&& other) noexcept {
+            if (this != &other) {
+                id = other.id;
+                username = std::move(other.username);
+                password = std::move(other.password);
+                session = std::move(other.session);
+            }
+            return *this;
         }
-        return *this;
-    }
 
-    void set_id(int id_) { id = id_; }
-    void set_username(std::string username_) { username = std::move(username_); }
-    void set_password(std::string password_) { password = std::move(password_); }
-    void set_session(Session session_) { session = std::move(session_); }
-    int get_id() const { return id; }
-    std::string get_username() const { return username; }
-    std::string get_password() const { return password; }
-    const Session& get_session() const { return session; }
-    void invalidate_session() {
-        session.set_session_id("");
-    }
-    void generate_session_id() {
-        std::string chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-        std::mt19937 gen(static_cast<unsigned long>(time(0)));
-        std::uniform_int_distribution<> dis(0, chars.size() - 1);
-
-        std::string session_id;
-        for (int i = 0; i < 16; ++i) {
-            session_id += chars[dis(gen)];
+        void set_id(int id_) { id = id_; }
+        void set_username(std::string username_) { username = std::move(username_); }
+        void set_password(std::string password_) { password = std::move(password_); }
+        void set_session(Session session_) { session = std::move(session_); }
+        int get_id() const { return id; }
+        std::string get_username() const { return username; }
+        std::string get_password() const { return password; }
+        const Session& get_session() const { return session; }
+        void invalidate_session() {
+            session.set_session_id("");
         }
-        session.set_session_id(session_id);
-    }
-private:
-    int id;
-    std::string username;
-    std::string password;
-    Session session;
+        void generate_session_id() {
+            std::string chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+            std::mt19937 gen(static_cast<unsigned long>(time(0)));
+            std::uniform_int_distribution<> dis(0, chars.size() - 1);
+
+            std::string session_id;
+            for (int i = 0; i < 16; ++i) {
+                session_id += chars[dis(gen)];
+            }
+            session.set_session_id(session_id);
+        }
+    private:
+        int id;
+        std::string username;
+        std::string password;
+        Session session;
 
 
 };
@@ -244,142 +244,142 @@ private:
 class UserService {
 
 
-public:
-    void add_user(User user) {
-        std::lock_guard<std::mutex> lock(mtx);
-        users.emplace_back(std::move(user)); 
-        std::cout << users.back().get_id() << " " << users.back().get_username() << " " << users.back().get_password() << std::endl;
-    }
+    public:
+        void add_user(User user) {
+            std::lock_guard<std::mutex> lock(mtx);
+            users.emplace_back(std::move(user)); 
+            std::cout << users.back().get_id() << " " << users.back().get_username() << " " << users.back().get_password() << std::endl;
+        }
 
-    int get_users_size() const { return users.size(); }
+        int get_users_size() const { return users.size(); }
 
-    bool validate_login(const std::string& username, const std::string& password) {
-        std::lock_guard<std::mutex> lock(mtx);
-        for (int i = 0; i < users.size(); i++) {
-            if (users.at(i).get_username() == username && users.at(i).get_password() == password) {
-                users.at(i).generate_session_id();
-                const Session& temp = users.at(i).get_session();
-                std::cout << users.at(i).get_id() << " " << temp.get_session_id() << std::endl; 
-                return true;
+        bool validate_login(const std::string& username, const std::string& password) {
+            std::lock_guard<std::mutex> lock(mtx);
+            for (int i = 0; i < users.size(); i++) {
+                if (users.at(i).get_username() == username && users.at(i).get_password() == password) {
+                    users.at(i).generate_session_id();
+                    const Session& temp = users.at(i).get_session();
+                    std::cout << users.at(i).get_id() << " " << temp.get_session_id() << std::endl; 
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        std::string get_session_id(const std::string& username) const {
+            for (const auto& user : users) {
+                if (user.get_username() == username) {
+                    return user.get_session().get_session_id();
+                }
+            }
+            return "";
+        }
+
+        bool is_session_valid(const std::string& session_id) const {
+            for (const auto& user : users) {
+                if (user.get_session().get_session_id() == session_id) {
+                    std::cout << "Session ID " << session_id << " is valid for user " << user.get_username() << std::endl;
+                    return true;
+                }
+            }
+            std::cout << "Session ID " << session_id << " is invalid" << std::endl;
+            return false;
+        }
+
+        bool invalidate_session(const std::string& session_id) {
+            std::lock_guard<std::mutex> lock(mtx);
+            for (auto& user : users) {
+                if (user.get_session().get_session_id() == session_id) {
+                    std::cout << "Invalidating session ID " << session_id << " for user " << user.get_username() << std::endl;
+                    user.invalidate_session();
+                    return true;
+                }
+            }
+            std::cout << "Failed to invalidate session ID " << session_id << std::endl;
+            return false;
+        }
+
+        void invalidate_expired_sessions() {
+            std::lock_guard<std::mutex> lock(mtx);
+            for (auto& user : users) {
+                if (user.get_session().is_expired()) {
+                    std::cout << "Session expired for user " << user.get_username() << " with session ID " << user.get_session().get_session_id() << std::endl;
+                    user.invalidate_session();
+                }
             }
         }
-        return false;
-    }
 
-    std::string get_session_id(const std::string& username) const {
-        for (const auto& user : users) {
-            if (user.get_username() == username) {
-                return user.get_session().get_session_id();
-            }
-        }
-        return "";
-    }
-
-    bool is_session_valid(const std::string& session_id) const {
-        for (const auto& user : users) {
-            if (user.get_session().get_session_id() == session_id) {
-                std::cout << "Session ID " << session_id << " is valid for user " << user.get_username() << std::endl;
-                return true;
-            }
-        }
-        std::cout << "Session ID " << session_id << " is invalid" << std::endl;
-        return false;
-    }
-
-    bool invalidate_session(const std::string& session_id) {
-        std::lock_guard<std::mutex> lock(mtx);
-        for (auto& user : users) {
-            if (user.get_session().get_session_id() == session_id) {
-                std::cout << "Invalidating session ID " << session_id << " for user " << user.get_username() << std::endl;
-                user.invalidate_session();
-                return true;
-            }
-        }
-        std::cout << "Failed to invalidate session ID " << session_id << std::endl;
-        return false;
-    }
-
-    void invalidate_expired_sessions() {
-        std::lock_guard<std::mutex> lock(mtx);
-        for (auto& user : users) {
-            if (user.get_session().is_expired()) {
-                std::cout << "Session expired for user " << user.get_username() << " with session ID " << user.get_session().get_session_id() << std::endl;
-                user.invalidate_session();
-            }
-        }
-    }
-
-    std::vector<User>& get_users() { return users; }
-    std::mutex& get_mutex() { return mtx; }
-private:
-    std::vector<User> users;
-    std::mutex mtx;
+        std::vector<User>& get_users() { return users; }
+        std::mutex& get_mutex() { return mtx; }
+    private:
+        std::vector<User> users;
+        std::mutex mtx;
 };
 
 class Application {
-public:
-    Application()
-        : user_service_(std::make_shared<UserService>()), client_service_(std::make_shared<ClientService>()) {}
+    public:
+        Application()
+            : user_service_(std::make_shared<UserService>()), client_service_(std::make_shared<ClientService>()) {}
 
-    std::shared_ptr<UserService> get_user_service() const { return user_service_; }
-    std::shared_ptr<ClientService> get_client_service() const { return client_service_; }
+        std::shared_ptr<UserService> get_user_service() const { return user_service_; }
+        std::shared_ptr<ClientService> get_client_service() const { return client_service_; }
 
-    double get_cpu_usage() {
-        CPUStats curr_stats = get_cpu_stats();
-        double usage = calculate_cpu_usage(prev_cpu_stats_, curr_stats);
-        prev_cpu_stats_ = curr_stats;
-        return usage;
-    }
-
-    double get_memory_usage() {
-        MemoryStats mem_stats = get_memory_stats();
-        return calculate_memory_usage(mem_stats);
-    }
-
-    std::string get_uptime() {
-        auto now = std::chrono::steady_clock::now();
-        auto uptime_duration = std::chrono::duration_cast<std::chrono::seconds>(now - start_time);
-        std::chrono::hours hours = std::chrono::duration_cast<std::chrono::hours>(uptime_duration);
-        uptime_duration -= hours;
-        std::chrono::minutes minutes = std::chrono::duration_cast<std::chrono::minutes>(uptime_duration);
-        uptime_duration -= minutes;
-        std::chrono::seconds seconds = std::chrono::duration_cast<std::chrono::seconds>(uptime_duration);
-
-        std::ostringstream uptime_stream;
-        uptime_stream << std::setfill('0') << std::setw(2) << hours.count() << ":"
-                      << std::setfill('0') << std::setw(2) << minutes.count() << ":"
-                      << std::setfill('0') << std::setw(2) << seconds.count();
-        return uptime_stream.str();
-    }
-
-    void allocate_memory(size_t megabytes) {
-        size_t bytes = megabytes * 1024 * 1024;
-        std::unique_ptr<char[]> memory(new char[bytes]);
-        std::fill(memory.get(), memory.get() + bytes, 0);
-        allocated_memory.push_back(std::move(memory));
-    }
-
-    void deallocate_memory(size_t megabytes) {
-        size_t bytes_to_deallocate = megabytes * 1024 * 1024;
-        size_t bytes_deallocated = 0;
-        std::lock_guard<std::mutex> lock(memory_mutex_);
-        while (!allocated_memory.empty() && bytes_deallocated < bytes_to_deallocate) {
-            auto& memory = allocated_memory.back();
-            size_t chunk_size = sizeof(memory);
-            if (chunk_size > bytes_to_deallocate - bytes_deallocated) {
-                break;
-            }
-            allocated_memory.pop_back();
-            bytes_deallocated += chunk_size;
+        double get_cpu_usage() {
+            CPUStats curr_stats = get_cpu_stats();
+            double usage = calculate_cpu_usage(prev_cpu_stats_, curr_stats);
+            prev_cpu_stats_ = curr_stats;
+            return usage;
         }
-    }
 
-private:
-    std::shared_ptr<UserService> user_service_;
-    std::shared_ptr<ClientService> client_service_;
-    CPUStats prev_cpu_stats_;
-    std::vector<std::unique_ptr<char[]>> allocated_memory;
-    std::mutex memory_mutex_;
+        double get_memory_usage() {
+            MemoryStats mem_stats = get_memory_stats();
+            return calculate_memory_usage(mem_stats);
+        }
+
+        std::string get_uptime() {
+            auto now = std::chrono::steady_clock::now();
+            auto uptime_duration = std::chrono::duration_cast<std::chrono::seconds>(now - start_time);
+            std::chrono::hours hours = std::chrono::duration_cast<std::chrono::hours>(uptime_duration);
+            uptime_duration -= hours;
+            std::chrono::minutes minutes = std::chrono::duration_cast<std::chrono::minutes>(uptime_duration);
+            uptime_duration -= minutes;
+            std::chrono::seconds seconds = std::chrono::duration_cast<std::chrono::seconds>(uptime_duration);
+
+            std::ostringstream uptime_stream;
+            uptime_stream << std::setfill('0') << std::setw(2) << hours.count() << ":"
+                << std::setfill('0') << std::setw(2) << minutes.count() << ":"
+                << std::setfill('0') << std::setw(2) << seconds.count();
+            return uptime_stream.str();
+        }
+
+        void allocate_memory(size_t megabytes) {
+            size_t bytes = megabytes * 1024 * 1024;
+            std::unique_ptr<char[]> memory(new char[bytes]);
+            std::fill(memory.get(), memory.get() + bytes, 0);
+            allocated_memory.push_back(std::move(memory));
+        }
+
+        void deallocate_memory(size_t megabytes) {
+            size_t bytes_to_deallocate = megabytes * 1024 * 1024;
+            size_t bytes_deallocated = 0;
+            std::lock_guard<std::mutex> lock(memory_mutex_);
+            while (!allocated_memory.empty() && bytes_deallocated < bytes_to_deallocate) {
+                auto& memory = allocated_memory.back();
+                size_t chunk_size = sizeof(memory);
+                if (chunk_size > bytes_to_deallocate - bytes_deallocated) {
+                    break;
+                }
+                allocated_memory.pop_back();
+                bytes_deallocated += chunk_size;
+            }
+        }
+
+    private:
+        std::shared_ptr<UserService> user_service_;
+        std::shared_ptr<ClientService> client_service_;
+        CPUStats prev_cpu_stats_;
+        std::vector<std::unique_ptr<char[]>> allocated_memory;
+        std::mutex memory_mutex_;
 };
 
 beast::string_view mime_type(beast::string_view path) {
@@ -695,7 +695,7 @@ class session : public std::enable_shared_from_this<session> {
     std::shared_ptr<std::string const> doc_root_;
     http::request<http::string_body> req_;
     std::shared_ptr<Application> app_;
-public:
+    public:
     session(tcp::socket&& socket, std::shared_ptr<std::string const> const& doc_root, std::shared_ptr<Application> app)
         : stream_(std::move(socket)), doc_root_(doc_root), app_(app) {}
 
@@ -705,7 +705,7 @@ public:
         net::dispatch(stream_.get_executor(), beast::bind_front_handler(&session::do_read, shared_from_this()));
     }
 
-private:
+    private:
     void do_read() {
         req_ = {};
         stream_.expires_after(std::chrono::seconds(30));
@@ -748,28 +748,28 @@ class listener : public std::enable_shared_from_this<listener> {
     tcp::acceptor acceptor_;
     std::shared_ptr<std::string const> doc_root_;
     std::shared_ptr<Application> app_;
-public:
+    public:
     listener(net::io_context& ioc, tcp::endpoint endpoint, std::shared_ptr<std::string const> const& doc_root, std::shared_ptr<Application> app)
         : ioc_(ioc), acceptor_(net::make_strand(ioc)), doc_root_(doc_root), app_(app) {
-        beast::error_code ec;
-        acceptor_.open(endpoint.protocol(), ec);
-        if (ec) { fail(ec, "open"); return; }
+            beast::error_code ec;
+            acceptor_.open(endpoint.protocol(), ec);
+            if (ec) { fail(ec, "open"); return; }
 
-        acceptor_.set_option(net::socket_base::reuse_address(true), ec);
-        if (ec) { fail(ec, "set_option"); return; }
+            acceptor_.set_option(net::socket_base::reuse_address(true), ec);
+            if (ec) { fail(ec, "set_option"); return; }
 
-        acceptor_.bind(endpoint, ec);
-        if (ec) { fail(ec, "bind"); return; }
+            acceptor_.bind(endpoint, ec);
+            if (ec) { fail(ec, "bind"); return; }
 
-        acceptor_.listen(net::socket_base::max_listen_connections, ec);
-        if (ec) { fail(ec, "listen"); return; }
-    }
+            acceptor_.listen(net::socket_base::max_listen_connections, ec);
+            if (ec) { fail(ec, "listen"); return; }
+        }
 
     void run() {
         do_accept();
     }
 
-private:
+    private:
     void do_accept() {
         acceptor_.async_accept(net::make_strand(ioc_), beast::bind_front_handler(&listener::on_accept, shared_from_this()));
     }
