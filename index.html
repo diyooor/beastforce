@@ -144,8 +144,8 @@
         <button id="showLogin">Back to Login</button>
     </div>
 
-    <div id="dashboard" class="dashboard">
-        <h2>Dashboard</h2>
+    <div id="adminDashboard" class="dashboard">
+        <h2>Admin User Dashboard</h2>
         <div class="tabs">
             <div class="tab active" data-tab="status">Server Status</div>
             <div class="tab" data-tab="changePassword">Change Password</div>
@@ -198,10 +198,18 @@
         <button id="logoutButton">Logout</button>
     </div>
 
+    <!-- Admin Dashboard -->
+    <div id="normalDashboard" class="dashboard hidden">
+        <h2>normal Dashboard</h2>
+        <!-- normal-specific content goes here -->
+        <button id="normalLogoutButton">Logout</button>
+    </div>
+
     <script>
         const loginContainer = document.getElementById('loginContainer');
         const registerContainer = document.getElementById('registerContainer');
-        const dashboard = document.getElementById('dashboard');
+        const normalDashboard = document.getElementById('normalDashboard');
+        const adminDashboard = document.getElementById('adminDashboard');
         const loginMessage = document.getElementById('loginMessage');
         const registerMessage = document.getElementById('registerMessage');
         const statusMessage = document.getElementById('statusMessage');
@@ -212,20 +220,22 @@
         function showScreen(screen) {
             loginContainer.style.display = 'none';
             registerContainer.style.display = 'none';
-            dashboard.classList.remove('active');
+            normalDashboard.classList.remove('active');
+            adminDashboard.classList.remove('active');
+
             if (screen === 'login') {
                 loginContainer.style.display = 'block';
             } else if (screen === 'register') {
                 registerContainer.style.display = 'block';
-            } else if (screen === 'dashboard') {
-                dashboard.classList.add('active');
+            } else if (screen === 'normalDashboard') {
+                normalDashboard.classList.add('active');
+            } else if (screen === 'adminDashboard') {
+                adminDashboard.classList.add('active');
             }
         }
 
         // Check if user is already logged in
         if (localStorage.getItem('session_id')) {
-            showScreen('dashboard');
-            fetchStatus();
             validateSession(); // Initial session validation
         }
 
@@ -248,8 +258,7 @@
 
                 if (response.ok && result.success === 'true') {
                     localStorage.setItem('session_id', result.session_id);
-                    showScreen('dashboard');
-                    fetchStatus();  // Fetch server status after successful login
+                    validateSession(); // Fetch server status after successful login and validate session
                     startSessionValidation(); // Start periodic session validation
                 } else {
                     loginMessage.innerHTML = `<span>${result.error || 'Login failed'}</span>`;
@@ -290,6 +299,34 @@
         });
 
         document.getElementById('logoutButton').addEventListener('click', async function() {
+            const session_id = localStorage.getItem('session_id');
+
+            if (session_id) {
+                try {
+                    const response = await fetch('/logout', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ session_id }),
+                    });
+
+                    const result = await response.json();
+
+                    if (response.ok && result.success === 'true') {
+                        localStorage.removeItem('session_id');
+                        showScreen('login');
+                        stopSessionValidation(); // Stop session validation
+                    } else {
+                        console.error(result.error || 'Logout failed');
+                    }
+                } catch (error) {
+                    console.error(error.message);
+                }
+            }
+        });
+
+        document.getElementById('normalLogoutButton').addEventListener('click', async function() {
             const session_id = localStorage.getItem('session_id');
 
             if (session_id) {
@@ -486,10 +523,14 @@
                     const response = await fetch(`/validate-session?session_id=${session_id}`);
                     const data = await response.json();
 
-                    if (data.success === 'false') {
+                    if (data.success === 'false' || data.role === -1) {
                         localStorage.removeItem('session_id');
                         showScreen('login');
                         stopSessionValidation();
+                    } else if (data.role === 0) {
+                        showScreen('adminDashboard');
+                    } else if (data.role === 1) {
+                        showScreen('normalDashboard');
                     }
                 } catch (error) {
                     console.error('Error:', error);
