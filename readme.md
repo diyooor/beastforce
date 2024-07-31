@@ -55,3 +55,5 @@ A simple web application built on top of boost beast.
 
 ## Screenshots
 ![Alt text](images/22.gif)
+### Allocate memory used with > 1 thread
+![Alt text](imageas/33.gif)
