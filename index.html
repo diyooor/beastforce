@@ -178,6 +178,13 @@
                 <button id="allocateMemoryButton">Allocate Memory</button>
                 <div class="message" id="memoryAllocationMessage"></div>
             </div>
+            <!-- Memory Deallocation Section -->
+            <div id="memoryDeallocationContainer">
+                <h3>Deallocate Memory</h3>
+                <input type="number" id="deallocateMemoryAmount" placeholder="Enter amount in MB" min="1">
+                <button id="deallocateMemoryButton">Deallocate Memory</button>
+                <div class="message" id="memoryDeallocationMessage"></div>
+            </div>
         </div>
         <div class="tab-content hidden" id="changePasswordContent">
             <h3>Change Password</h3>
@@ -200,6 +207,7 @@
         const statusMessage = document.getElementById('statusMessage');
         const passwordMessage = document.getElementById('passwordMessage');
         const memoryAllocationMessage = document.getElementById('memoryAllocationMessage');
+        const memoryDeallocationMessage = document.getElementById('memoryDeallocationMessage');
 
         function showScreen(screen) {
             loginContainer.style.display = 'none';
@@ -416,6 +424,33 @@
                 }
             } catch (error) {
                 memoryAllocationMessage.innerHTML = `<span>${error.message}</span>`;
+            }
+        });
+
+        // Memory Deallocation functionality
+        document.getElementById('deallocateMemoryButton').addEventListener('click', async function() {
+            const memoryAmount = parseInt(document.getElementById('deallocateMemoryAmount').value);
+            const session_id = localStorage.getItem('session_id');
+
+            try {
+                const response = await fetch('/deallocate_memory', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ megabytes: memoryAmount, session_id: session_id }),
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success === 'true') {
+                    memoryDeallocationMessage.innerHTML = `<span style="color: green;">Memory deallocated successfully</span>`;
+                    fetchStatus();  // Update status after memory deallocation
+                } else {
+                    memoryDeallocationMessage.innerHTML = `<span>${result.error || 'Memory deallocation failed'}</span>`;
+                }
+            } catch (error) {
+                memoryDeallocationMessage.innerHTML = `<span>${error.message}</span>`;
             }
         });
 

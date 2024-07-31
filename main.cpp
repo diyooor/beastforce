@@ -33,8 +33,6 @@ std::atomic<int> active_connections(0);
 std::atomic<int> total_requests(0);
 std::chrono::time_point<std::chrono::steady_clock> start_time = std::chrono::steady_clock::now();
 
-std::vector<std::unique_ptr<char[]>> allocated_memory;
-
 struct CPUStats {
     unsigned long long user, nice, system, idle;
 };
@@ -321,7 +319,7 @@ public:
 
 class Application {
 public:
-    Application() 
+    Application()
         : user_service_(std::make_shared<UserService>()), client_service_(std::make_shared<ClientService>()) {}
 
     std::shared_ptr<UserService> get_user_service() const { return user_service_; }
@@ -338,7 +336,7 @@ public:
         MemoryStats mem_stats = get_memory_stats();
         return calculate_memory_usage(mem_stats);
     }
-    
+
     std::string get_uptime() {
         auto now = std::chrono::steady_clock::now();
         auto uptime_duration = std::chrono::duration_cast<std::chrono::seconds>(now - start_time);
@@ -362,10 +360,27 @@ public:
         allocated_memory.push_back(std::move(memory));
     }
 
+    void deallocate_memory(size_t megabytes) {
+        size_t bytes_to_deallocate = megabytes * 1024 * 1024;
+        size_t bytes_deallocated = 0;
+        std::lock_guard<std::mutex> lock(memory_mutex_);
+        while (!allocated_memory.empty() && bytes_deallocated < bytes_to_deallocate) {
+            auto& memory = allocated_memory.back();
+            size_t chunk_size = sizeof(memory);
+            if (chunk_size > bytes_to_deallocate - bytes_deallocated) {
+                break;
+            }
+            allocated_memory.pop_back();
+            bytes_deallocated += chunk_size;
+        }
+    }
+
 private:
     std::shared_ptr<UserService> user_service_;
     std::shared_ptr<ClientService> client_service_;
     CPUStats prev_cpu_stats_;
+    std::vector<std::unique_ptr<char[]>> allocated_memory;
+    std::mutex memory_mutex_;
 };
 
 beast::string_view mime_type(beast::string_view path) {
@@ -558,6 +573,25 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
                 json response;
                 response["success"] = "true";
                 response["allocated_megabytes"] = megabytes;
+                return res_(http::status::ok, response.dump());
+            } catch (const std::exception& e) {
+                json response;
+                response["success"] = "false";
+                response["error"] = e.what();
+                return res_(http::status::internal_server_error, response.dump());
+            }
+        }
+        if (req.target() == "/deallocate_memory") {
+            try {
+                json req_ = json::parse(req.body());
+                if (!req_.contains("megabytes") || !req_["megabytes"].is_number()) {
+                    return res_(http::status::bad_request, "megabytes is missing or not a number");
+                }
+                size_t megabytes = req_["megabytes"];
+                app->deallocate_memory(megabytes);
+                json response;
+                response["success"] = "true";
+                response["deallocated_megabytes"] = megabytes;
                 return res_(http::status::ok, response.dump());
             } catch (const std::exception& e) {
                 json response;
