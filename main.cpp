@@ -27,11 +27,13 @@ namespace beast = boost::beast;
 namespace http = beast::http;
 namespace net = boost::asio;
 using tcp = boost::asio::ip::tcp;
-using json = nlohmann::json; 
+using json = nlohmann::json;
 
 std::atomic<int> active_connections(0);
 std::atomic<int> total_requests(0);
 std::chrono::time_point<std::chrono::steady_clock> start_time = std::chrono::steady_clock::now();
+
+std::vector<std::unique_ptr<char[]>> allocated_memory;
 
 struct CPUStats {
     unsigned long long user, nice, system, idle;
@@ -98,13 +100,10 @@ MemoryStats get_memory_stats() {
     return stats;
 }
 
-
-
 double calculate_memory_usage(const MemoryStats& stats) {
     unsigned long long used_memory = stats.total - stats.free - stats.buffers - stats.cached;
     return (used_memory / static_cast<double>(stats.total)) * 100.0;
 }
-
 
 class ClientService {
 public:
@@ -356,6 +355,13 @@ public:
         return uptime_stream.str();
     }
 
+    void allocate_memory(size_t megabytes) {
+        size_t bytes = megabytes * 1024 * 1024;
+        std::unique_ptr<char[]> memory(new char[bytes]);
+        std::fill(memory.get(), memory.get() + bytes, 0);
+        allocated_memory.push_back(std::move(memory));
+    }
+
 private:
     std::shared_ptr<UserService> user_service_;
     std::shared_ptr<ClientService> client_service_;
@@ -535,6 +541,25 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
                     return res_(http::status::unauthorized, "Invalid session");
                 }
             } catch (const std::exception &e) {
+                json response;
+                response["success"] = "false";
+                response["error"] = e.what();
+                return res_(http::status::internal_server_error, response.dump());
+            }
+        }
+        if (req.target() == "/allocate_memory") {
+            try {
+                json req_ = json::parse(req.body());
+                if (!req_.contains("megabytes") || !req_["megabytes"].is_number()) {
+                    return res_(http::status::bad_request, "megabytes is missing or not a number");
+                }
+                size_t megabytes = req_["megabytes"];
+                app->allocate_memory(megabytes);
+                json response;
+                response["success"] = "true";
+                response["allocated_megabytes"] = megabytes;
+                return res_(http::status::ok, response.dump());
+            } catch (const std::exception& e) {
                 json response;
                 response["success"] = "false";
                 response["error"] = e.what();

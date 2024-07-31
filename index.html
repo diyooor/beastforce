@@ -171,6 +171,13 @@
                 <h3>Uptime</h3>
                 <p id="uptime"></p>
             </div>
+            <!-- Memory Allocation Section -->
+            <div id="memoryAllocationContainer">
+                <h3>Allocate Memory</h3>
+                <input type="number" id="memoryAmount" placeholder="Enter amount in MB" min="1">
+                <button id="allocateMemoryButton">Allocate Memory</button>
+                <div class="message" id="memoryAllocationMessage"></div>
+            </div>
         </div>
         <div class="tab-content hidden" id="changePasswordContent">
             <h3>Change Password</h3>
@@ -192,6 +199,7 @@
         const registerMessage = document.getElementById('registerMessage');
         const statusMessage = document.getElementById('statusMessage');
         const passwordMessage = document.getElementById('passwordMessage');
+        const memoryAllocationMessage = document.getElementById('memoryAllocationMessage');
 
         function showScreen(screen) {
             loginContainer.style.display = 'none';
@@ -381,6 +389,33 @@
                 }
             } catch (error) {
                 passwordMessage.innerHTML = `<span>${error.message}</span>`;
+            }
+        });
+
+        // Memory Allocation functionality
+        document.getElementById('allocateMemoryButton').addEventListener('click', async function() {
+            const memoryAmount = parseInt(document.getElementById('memoryAmount').value);
+            const session_id = localStorage.getItem('session_id');
+
+            try {
+                const response = await fetch('/allocate_memory', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ megabytes: memoryAmount, session_id: session_id }),
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success === 'true') {
+                    memoryAllocationMessage.innerHTML = `<span style="color: green;">Memory allocated successfully</span>`;
+                    fetchStatus();  // Update status after memory allocation
+                } else {
+                    memoryAllocationMessage.innerHTML = `<span>${result.error || 'Memory allocation failed'}</span>`;
+                }
+            } catch (error) {
+                memoryAllocationMessage.innerHTML = `<span>${error.message}</span>`;
             }
         });
 
