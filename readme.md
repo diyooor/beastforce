@@ -12,12 +12,12 @@ A simple web application built on top of boost beast.
 
 - support tickets
     - [x] created message struct 
-    - [] vector of messages in userservice
-    - [] admins can view messages by sender
-    - [] admins can respond 
-    - [] normal users can add messages once the ticket is open
+    - [x] vector of messages in userservice
+    - [x] admins can view messages by sender
+    - [x] admins can respond 
+    - [x] normal users can add messages once the ticket is open
     - [] admins can see when normal users have seen the response
-    - need to add a tab for support tickets in both admin and non-admin dashboard 
+    - [x] need to add a tab for support tickets in both admin and non-admin dashboard 
 - support chat
     - pop up chat box would be cool here
 - catalog (items in a shop)
