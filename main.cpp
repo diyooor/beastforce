@@ -31,7 +31,6 @@ using json = nlohmann::json;
 
 std::atomic<int> active_connections(0);
 std::atomic<int> total_requests(0);
-std::chrono::time_point<std::chrono::steady_clock> start_time = std::chrono::steady_clock::now();
 
 struct CPUStats {
     unsigned long long user, nice, system, idle;
@@ -204,23 +203,49 @@ class User {
         Role role; 
 };
 
+class Ticket {
+public:
+    Ticket(int id, const std::string& creator, const std::string& content)
+        : id_(id), creator_(creator), content_(content), status_("open") {}
+
+    int get_id() const { return id_; }
+    std::string get_creator() const { return creator_; }
+    std::string get_content() const { return content_; }
+    std::string get_status() const { return status_; }
+    std::string get_response() const { return response_; }
+
+    void set_status(const std::string& status) { status_ = status; }
+    void set_response(const std::string& response) { response_ = response; }
+
+private:
+    int id_;
+    std::string creator_;
+    std::string content_;
+    std::string status_;
+    std::string response_;
+};
+
+
+/*
+ * how to implement the messages 
+ */
+
 class UserService {
     public:
         void add_user(User user) {
             std::lock_guard<std::mutex> lock(mtx);
-            users.emplace_back(std::move(user)); 
-            std::cout << users.back().get_id() << " " << users.back().get_username() << " " << users.back().get_password() << std::endl;
+            users.emplace_back(std::move(user));
         }
 
-        int get_users_size() const { return users.size(); }
+        int get_users_size() const {
+            return users.size();
+        }
 
         bool validate_login(const std::string& username, const std::string& password) {
             std::lock_guard<std::mutex> lock(mtx);
             for (int i = 0; i < users.size(); i++) {
                 if (users.at(i).get_username() == username && users.at(i).get_password() == password) {
                     users.at(i).generate_session_id();
-                    const Session& temp = users.at(i).get_session();
-                    std::cout << users.at(i).get_id() << " " << temp.get_session_id() << std::endl; 
                     return true;
                 }
             }
@@ -228,31 +253,23 @@ class UserService {
         }
 
         std::string get_session_id(const std::string& username) const {
-            for (const auto& user : users) {
-                if (user.get_username() == username) {
+            for (const auto& user : users)
+                if (user.get_username() == username)
                     return user.get_session().get_session_id();
-                }
-            }
             return "";
         }
 
         int get_session_role(const std::string& session_id) const {
-            for (const auto& user : users) { 
-                if (user.get_session().get_session_id() == session_id) {
+            for (const auto& user : users)
+                if (user.get_session().get_session_id() == session_id)
                     return user.get_role();
-                }
-            }
             return -1;
         }
 
         bool is_session_valid(const std::string& session_id) const {
-            for (const auto& user : users) {
-                if (user.get_session().get_session_id() == session_id) {
-                    std::cout << "Session ID " << session_id << " is valid for user " << user.get_username() << " role: " << user.get_role() << std::endl;
+            for (const auto& user : users)
+                if (user.get_session().get_session_id() == session_id)
                     return true;
-                }
-            }
-            std::cout << "Session ID " << session_id << " is invalid" << std::endl;
             return false;
         }
 
@@ -260,30 +277,54 @@ class UserService {
             std::lock_guard<std::mutex> lock(mtx);
             for (auto& user : users) {
                 if (user.get_session().get_session_id() == session_id) {
-                    std::cout << "Invalidating session ID " << session_id << " for user " << user.get_username() << std::endl;
                     user.invalidate_session();
                     return true;
                 }
             }
-            std::cout << "Failed to invalidate session ID " << session_id << std::endl;
             return false;
         }
 
         void invalidate_expired_sessions() {
             std::lock_guard<std::mutex> lock(mtx);
             for (auto& user : users) {
-                if (user.get_session().is_expired()) {
-                    std::cout << "Session expired for user " << user.get_username() << " with session ID " << user.get_session().get_session_id() << std::endl;
+                if (user.get_session().is_expired())
                     user.invalidate_session();
+            }
+        }
+
+        std::vector<User>& get_users() {
+            return users;
+        }
+
+        std::mutex& get_mutex() {
+            return mtx;
+        }
+
+        void create_ticket(const std::string& creator, const std::string& content) {
+            std::lock_guard<std::mutex> lock(mtx);
+            int id = tickets_.size();
+            tickets_.emplace_back(id, creator, content);
+        }
+
+        std::vector<Ticket> get_tickets() const {
+            return tickets_;
+        }
+
+        void respond_to_ticket(int ticket_id, const std::string& response) {
+            std::lock_guard<std::mutex> lock(mtx);
+            for (auto& ticket : tickets_) {
+                if (ticket.get_id() == ticket_id) {
+                    ticket.set_response(response);
+                    ticket.set_status("closed");
+                    break;
                 }
             }
         }
 
-        std::vector<User>& get_users() { return users; }
-        std::mutex& get_mutex() { return mtx; }
     private:
         std::vector<User> users;
         std::mutex mtx;
+        std::vector<Ticket> tickets_;
 };
 
 class ClientService {
@@ -319,70 +360,84 @@ class ClientService {
 };
 
 class Application {
-    public:
-        Application()
-            : user_service_(std::make_shared<UserService>()), client_service_(std::make_shared<ClientService>()) {}
+public:
+    Application()
+        : user_service_(std::make_shared<UserService>()), client_service_(std::make_shared<ClientService>()) {}
 
-        std::shared_ptr<UserService> get_user_service() const { return user_service_; }
-        std::shared_ptr<ClientService> get_client_service() const { return client_service_; }
+    std::shared_ptr<UserService> get_user_service() const { return user_service_; }
+    std::shared_ptr<ClientService> get_client_service() const { return client_service_; }
 
-        double get_cpu_usage() {
-            CPUStats curr_stats = get_cpu_stats();
-            double usage = calculate_cpu_usage(prev_cpu_stats_, curr_stats);
-            prev_cpu_stats_ = curr_stats;
-            return usage;
-        }
+    double get_cpu_usage() {
+        CPUStats curr_stats = get_cpu_stats();
+        double usage = calculate_cpu_usage(prev_cpu_stats_, curr_stats);
+        prev_cpu_stats_ = curr_stats;
+        return usage;
+    }
 
-        double get_memory_usage() {
-            MemoryStats mem_stats = get_memory_stats();
-            return calculate_memory_usage(mem_stats);
-        }
+    double get_memory_usage() {
+        MemoryStats mem_stats = get_memory_stats();
+        return calculate_memory_usage(mem_stats);
+    }
 
-        std::string get_uptime() {
-            auto now = std::chrono::steady_clock::now();
-            auto uptime_duration = std::chrono::duration_cast<std::chrono::seconds>(now - start_time);
-            std::chrono::hours hours = std::chrono::duration_cast<std::chrono::hours>(uptime_duration);
-            uptime_duration -= hours;
-            std::chrono::minutes minutes = std::chrono::duration_cast<std::chrono::minutes>(uptime_duration);
-            uptime_duration -= minutes;
-            std::chrono::seconds seconds = std::chrono::duration_cast<std::chrono::seconds>(uptime_duration);
+    std::string get_uptime() {
+        auto now = std::chrono::steady_clock::now();
+        auto uptime_duration = std::chrono::duration_cast<std::chrono::seconds>(now - start_time);
+        std::chrono::hours hours = std::chrono::duration_cast<std::chrono::hours>(uptime_duration);
+        uptime_duration -= hours;
+        std::chrono::minutes minutes = std::chrono::duration_cast<std::chrono::minutes>(uptime_duration);
+        uptime_duration -= minutes;
+        std::chrono::seconds seconds = std::chrono::duration_cast<std::chrono::seconds>(uptime_duration);
 
-            std::ostringstream uptime_stream;
-            uptime_stream << std::setfill('0') << std::setw(2) << hours.count() << ":"
-                << std::setfill('0') << std::setw(2) << minutes.count() << ":"
-                << std::setfill('0') << std::setw(2) << seconds.count();
-            return uptime_stream.str();
-        }
+        std::ostringstream uptime_stream;
+        uptime_stream << std::setfill('0') << std::setw(2) << hours.count() << ":"
+                      << std::setfill('0') << std::setw(2) << minutes.count() << ":"
+                      << std::setfill('0') << std::setw(2) << seconds.count();
+        return uptime_stream.str();
+    }
 
-        void allocate_memory(size_t megabytes) {
-            size_t bytes = megabytes * 1024 * 1024;
-            std::unique_ptr<char[]> memory(new char[bytes]);
-            std::fill(memory.get(), memory.get() + bytes, 0);
-            allocated_memory.push_back(std::move(memory));
-        }
+    void allocate_memory(size_t megabytes) {
+        size_t bytes = megabytes * 1024 * 1024;
+        std::unique_ptr<char[]> memory(new char[bytes]);
+        std::fill(memory.get(), memory.get() + bytes, 0);
+        allocated_memory_.push_back(std::move(memory));
+    }
 
-        void deallocate_memory(size_t megabytes) {
-            size_t bytes_to_deallocate = megabytes * 1024 * 1024;
-            size_t bytes_deallocated = 0;
-            std::lock_guard<std::mutex> lock(memory_mutex_);
-            while (!allocated_memory.empty() && bytes_deallocated < bytes_to_deallocate) {
-                auto& memory = allocated_memory.back();
-                size_t chunk_size = sizeof(memory);
-                if (chunk_size > bytes_to_deallocate - bytes_deallocated) {
-                    break;
-                }
-                allocated_memory.pop_back();
-                bytes_deallocated += chunk_size;
+    void deallocate_memory(size_t megabytes) {
+        size_t bytes_to_deallocate = megabytes * 1024 * 1024;
+        size_t bytes_deallocated = 0;
+        std::lock_guard<std::mutex> lock(memory_mutex_);
+        while (!allocated_memory_.empty() && bytes_deallocated < bytes_to_deallocate) {
+            auto& memory = allocated_memory_.back();
+            size_t chunk_size = sizeof(memory);
+            if (chunk_size > bytes_to_deallocate - bytes_deallocated) {
+                break;
             }
+            allocated_memory_.pop_back();
+            bytes_deallocated += chunk_size;
         }
+    }
 
-    private:
-        std::shared_ptr<UserService> user_service_;
-        std::shared_ptr<ClientService> client_service_;
-        CPUStats prev_cpu_stats_;
-        std::vector<std::unique_ptr<char[]>> allocated_memory;
-        std::mutex memory_mutex_;
+    void create_ticket(const std::string& creator, const std::string& content) {
+        user_service_->create_ticket(creator, content);
+    }
+
+    std::vector<Ticket> get_tickets() const {
+        return user_service_->get_tickets();
+    }
+
+    void respond_to_ticket(int ticket_id, const std::string& response) {
+        user_service_->respond_to_ticket(ticket_id, response);
+    }
+
+private:
+    std::shared_ptr<UserService> user_service_;
+    std::shared_ptr<ClientService> client_service_;
+    CPUStats prev_cpu_stats_;
+    std::vector<std::unique_ptr<char[]>> allocated_memory_;
+    std::mutex memory_mutex_;
+    std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
 };
+
 
 beast::string_view mime_type(beast::string_view path) {
     using beast::iequals;
@@ -446,15 +501,45 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
     };
 
     if (req.method() == http::verb::post) {
+        if (req.target() == "/create-ticket") {
+            try {
+                json req_ = json::parse(req.body());
+                std::string creator = req_["creator"];
+                std::string content = req_["content"];
+                app->create_ticket(creator, content);
+                json response;
+                response["success"] = "true";
+                return res_(http::status::ok, response.dump());
+            } catch (const std::exception& e) {
+                return res_(http::status::internal_server_error, e.what());
+            }
+        }
+        if (req.target() == "/respond-ticket") {
+            try {
+                json req_ = json::parse(req.body());
+                int ticket_id = req_["ticket_id"];
+                std::string response = req_["response"];
+                app->respond_to_ticket(ticket_id, response);
+                json res;
+                res["success"] = "true";
+                return res_(http::status::ok, res.dump());
+            } catch (const std::exception& e) {
+                return res_(http::status::internal_server_error, e.what());
+            }
+        }
         if (req.target() == "/register") {
             try {
                 json req_ = json::parse(req.body());
                 User user_;
-                user_.set_role(admin);
                 user_.set_username(req_["username"]);
                 user_.set_password(req_["password"]);
                 auto user_service = app->get_user_service();
                 user_.set_id(user_service->get_users_size()); 
+                // this is temporary
+                if (user_service->get_users_size() == 0)
+                    user_.set_role(admin);
+                else
+                    user_.set_role(normal);
                 user_service->add_user(std::move(user_));
                 json response;
                 response["success"] = "true";
@@ -659,6 +744,25 @@ http::message_generator handle_request(beast::string_view doc_root, http::reques
                 }
             }
             return res_(http::status::bad_request, "Missing session_id parameter", "application/json");
+        }
+        if (req.target() == "/list-tickets") {
+            try {
+                auto tickets = app->get_tickets();
+                json response;
+                response["tickets"] = json::array();
+                for (const auto& ticket : tickets) {
+                    json ticket_json;
+                    ticket_json["id"] = ticket.get_id();
+                    ticket_json["creator"] = ticket.get_creator();
+                    ticket_json["content"] = ticket.get_content();
+                    ticket_json["status"] = ticket.get_status();
+                    ticket_json["response"] = ticket.get_response();
+                    response["tickets"].push_back(ticket_json);
+                }
+                return res_(http::status::ok, response.dump());
+            } catch (const std::exception& e) {
+                return res_(http::status::internal_server_error, e.what());
+            }
         }
     }
 
