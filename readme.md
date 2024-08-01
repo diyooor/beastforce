@@ -11,6 +11,12 @@ A simple web application built on top of boost beast.
     - [x] need to add additional div elements to the client and separate them by the role retrieved from the session
 
 - support tickets
+    - [x] created message struct 
+    - [] vector of messages in userservice
+    - [] admins can view messages by sender
+    - [] admins can respond 
+    - [] normal users can add messages once the ticket is open
+    - [] admins can see when normal users have seen the response
     - need to add a tab for support tickets in both admin and non-admin dashboard 
 - support chat
     - pop up chat box would be cool here
@@ -23,9 +29,6 @@ A simple web application built on top of boost beast.
     - use the ClientService within the create-stripe-checkout endpoint
 - other user account management things (delete account, password recovery once email functionality is set up)
 - calendar scheduling (schedule date/time appointments with payment)
--
-super later down the line
-- smtp/pop3/imap integration (can see emails within admin dashboard)
 
 ## Features
 
@@ -77,4 +80,6 @@ super later down the line
 ---
 
 ## Screenshots
+Ticket demo
+- [[images/1.png]]
 - check images
