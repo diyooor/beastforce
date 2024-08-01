@@ -149,6 +149,7 @@
         <div class="tabs">
             <div class="tab active" data-tab="status">Server Status</div>
             <div class="tab" data-tab="changePassword">Change Password</div>
+            <div class="tab" data-tab="manageTickets">Manage Tickets</div>
         </div>
         <div class="tab-content" id="statusContent">
             <h3>Server Status</h3>
@@ -195,13 +196,26 @@
             </form>
             <div class="message" id="passwordMessage"></div>
         </div>
+        <div class="tab-content hidden" id="manageTicketsContent">
+            <h3>Manage Tickets</h3>
+            <button id="listTicketsButton">List Tickets</button>
+            <div id="ticketsList"></div>
+        </div>
         <button id="logoutButton">Logout</button>
     </div>
 
-    <!-- Admin Dashboard -->
+    <!-- Normal User Dashboard -->
     <div id="normalDashboard" class="dashboard hidden">
-        <h2>normal Dashboard</h2>
-        <!-- normal-specific content goes here -->
+        <h2>Normal User Dashboard</h2>
+        <h3>Create Ticket</h3>
+        <form id="createTicketForm">
+            <input type="text" id="ticketContent" placeholder="Ticket Content" required>
+            <button type="submit">Create Ticket</button>
+        </form>
+        <div class="message" id="ticketMessage"></div>
+        <h3>Tickets</h3>
+        <button id="listUserTicketsButton">List My Tickets</button>
+        <div id="userTicketsList"></div>
         <button id="normalLogoutButton">Logout</button>
     </div>
 
@@ -214,6 +228,7 @@
         const registerMessage = document.getElementById('registerMessage');
         const statusMessage = document.getElementById('statusMessage');
         const passwordMessage = document.getElementById('passwordMessage');
+        const ticketMessage = document.getElementById('ticketMessage');
         const memoryAllocationMessage = document.getElementById('memoryAllocationMessage');
         const memoryDeallocationMessage = document.getElementById('memoryDeallocationMessage');
 
@@ -490,6 +505,125 @@
                 memoryDeallocationMessage.innerHTML = `<span>${error.message}</span>`;
             }
         });
+
+        // Create Ticket functionality
+        document.getElementById('createTicketForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+
+            const content = document.getElementById('ticketContent').value;
+            const session_id = localStorage.getItem('session_id');
+
+            try {
+                const response = await fetch('/create-ticket', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ creator: session_id, content }),
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success === 'true') {
+                    ticketMessage.innerHTML = `<span style="color: green;">Ticket created successfully</span>`;
+                    document.getElementById('createTicketForm').reset();
+                } else {
+                    ticketMessage.innerHTML = `<span>${result.error || 'Ticket creation failed'}</span>`;
+                }
+            } catch (error) {
+                ticketMessage.innerHTML = `<span>${error.message}</span>`;
+            }
+        });
+
+        // List User Tickets functionality
+        document.getElementById('listUserTicketsButton').addEventListener('click', async function() {
+            const session_id = localStorage.getItem('session_id');
+
+            try {
+                const response = await fetch('/list-tickets');
+                const result = await response.json();
+
+                if (response.ok) {
+                    const userTickets = result.tickets.filter(ticket => ticket.creator === session_id);
+                    const userTicketsList = document.getElementById('userTicketsList');
+                    userTicketsList.innerHTML = '';
+
+                    userTickets.forEach(ticket => {
+                        const ticketElement = document.createElement('div');
+                        ticketElement.innerHTML = `
+                            <p><strong>ID:</strong> ${ticket.id}</p>
+                            <p><strong>Content:</strong> ${ticket.content}</p>
+                            <p><strong>Status:</strong> ${ticket.status}</p>
+                            <p><strong>Response:</strong> ${ticket.response || 'N/A'}</p>
+                            <hr>
+                        `;
+                        userTicketsList.appendChild(ticketElement);
+                    });
+                } else {
+                    console.error('Failed to fetch tickets');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        });
+
+        // List Tickets (Admin) functionality
+        document.getElementById('listTicketsButton').addEventListener('click', async function() {
+            try {
+                const response = await fetch('/list-tickets');
+                const result = await response.json();
+
+                if (response.ok) {
+                    const ticketsList = document.getElementById('ticketsList');
+                    ticketsList.innerHTML = '';
+
+                    result.tickets.forEach(ticket => {
+                        const ticketElement = document.createElement('div');
+                        ticketElement.innerHTML = `
+                            <p><strong>ID:</strong> ${ticket.id}</p>
+                            <p><strong>Creator:</strong> ${ticket.creator}</p>
+                            <p><strong>Content:</strong> ${ticket.content}</p>
+                            <p><strong>Status:</strong> ${ticket.status}</p>
+                            <p><strong>Response:</strong> ${ticket.response || 'N/A'}</p>
+                            <textarea id="response-${ticket.id}" placeholder="Enter response here..."></textarea>
+                            <button onclick="respondToTicket(${ticket.id})">Respond</button>
+                            <hr>
+                        `;
+                        ticketsList.appendChild(ticketElement);
+                    });
+                } else {
+                    console.error('Failed to fetch tickets');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        });
+
+        // Respond to Ticket (Admin) functionality
+        async function respondToTicket(ticket_id) {
+            const response = document.getElementById(`response-${ticket_id}`).value;
+
+            try {
+                const fetchResponse = await fetch('/respond-ticket', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ ticket_id, response }),
+                });
+
+                const result = await fetchResponse.json();
+
+                if (fetchResponse.ok && result.success === 'true') {
+                    alert('Response submitted successfully');
+                    document.getElementById('listTicketsButton').click(); // Refresh the tickets list
+                } else {
+                    alert('Failed to submit response');
+                }
+            } catch (error) {
+                alert('Error:', error.message);
+            }
+        }
 
         // Tab functionality
         document.querySelectorAll('.tab').forEach(tab => {
