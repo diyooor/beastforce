@@ -29,6 +29,7 @@ A simple web application built on top of boost beast.
     - use the ClientService within the create-stripe-checkout endpoint
 - other user account management things (delete account, password recovery once email functionality is set up)
 - calendar scheduling (schedule date/time appointments with payment)
+- [x] video streaming (not in this repo though)
 
 ## Features
 
