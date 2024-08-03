@@ -26,10 +26,10 @@ A simple web application built on top of boost beast.
     - add a normal user tab and admin tab for calendar availability and scheduling
     - also need a object for calendar
 - payment processing (stripe for calendar scheduling and catalog)
-    - use the ClientService within the create-stripe-checkout endpoint
+    - [x] use the ClientService within the create-stripe-checkout endpoint (private repo)
 - other user account management things (delete account, password recovery once email functionality is set up)
 - calendar scheduling (schedule date/time appointments with payment)
-- [x] video streaming (not in this repo though)
+- [x] video streaming (private repo)
 
 ## Features
 
