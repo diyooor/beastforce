@@ -1,86 +1,23 @@
----
+              GLWTS(Good Luck With That Shit) Общественная Лицензия
+                      Copyright (c) Все блять, кроме Автора
 
-# Webapp
+Всем разрешается копировать, распространять, изменять, совмещать, продавать,
+публиковать, сублицензировать или творить любую другую хуйню с этим кодом
+на СВОЙ СТРАХ и РИСК.
 
-A simple web application built on top of boost beast. 
+Автор абсолютно нихуя не понимает в предназначении данного кода.
+Он может сработать, а может и нет - автору не ебет.
 
-## Roadmap (what do I want to do for the next 9999 years)
-- [x] user roles (admin/non-admin)
-    - [x] need to add role to the json response of validate session
-- [x] admin dashboard () (maybe the easiest with user roles -- to do today)
-    - [x] need to add additional div elements to the client and separate them by the role retrieved from the session
 
-- support tickets
-    - [x] created message struct 
-    - [x] vector of messages in userservice
-    - [x] admins can view messages by sender
-    - [x] admins can respond 
-    - [x] normal users can add messages once the ticket is open
-    - [] admins can see when normal users have seen the response
-    - [x] need to add a tab for support tickets in both admin and non-admin dashboard 
-- support chat
-    - pop up chat box would be cool here
-- catalog (items in a shop)
-    - need to separate the login and actual home landing page which would be a catalog of items to buy in this case
-- calendar scheduling (date time appointments with availablity)
-    - add a normal user tab and admin tab for calendar availability and scheduling
-    - also need a object for calendar
-- payment processing (stripe for calendar scheduling and catalog)
-    - [x] use the ClientService within the create-stripe-checkout endpoint (private repo)
-- other user account management things (delete account, password recovery once email functionality is set up)
-- calendar scheduling (schedule date/time appointments with payment)
-- [x] video streaming (private repo)
+                    "УДАЧИ С ЭТОМ ДЕРЬМОМ" ОБЩЕСТВЕННАЯ ЛИЦЕНЗИЯ
+          УСЛОВИЯ И ПОЛОЖЕНИЯ ДЛЯ КОПИРОВАНИЯ, РАСПРОСТРАНЕНИЯ И ИЗМЕНЕНИЯ
 
-## Features
+  0. Делайте ЛЮБУЮ ХУЙНЮ, ВЗБРЕДУЩУЮ ВАМ В ГОЛОВУ до тех пор, пока ВЫ НЕ ОСТАВЛЯЕТЕ
+УЛИК ДЛЯ НАХОЖДЕНИЯ АВТОРА оригинального продукта, чтобы обвинить его или заставить
+взять на себя ответственность.
 
-- User login and registration
-- Password change
-- Server status dashboard (CPU usage, requests, etc.)
-- Timed session management
-- Allocate/deallocate system memory
-## Files
+НИ ПРИ КАКИХ ОБСТОЯТЕЛЬСТВАХ АВТОРЫ НЕ НЕСУТ ОТВЕТСТВЕННОСТИ ЗА ПРЕТЕНЗИИ,
+УБЫТКИ ИЛИ ДРУГИЕ ОТВЕТСТВЕННОСТИ, ПОДНЯТЫЕ ВО ВРЕМЯ КОНТРАКТА И ВЫЗВАННЫЕ
+ПРЯМОЙ ИЛИ КОСВЕННОЙ СВЯЗЬЮ С ПРОГРАММНЫМ ОБЕСПЕЧЕНИЕМ.
 
-- `index.html`: Frontend HTML and CSS
-- `main.cpp`: Backend server logic
-
-## Getting Started
-
-1. Clone the repository.
-2. Compile `main.cpp`:
-   ```sh
-   g++ -o main main.cpp -lpthread -std=c++17
-   ```
-3. Run the server:
-   ```sh
-   ./main 0.0.0.0 8080 . 1
-   ```
-4. Open `localhost:8080/` in your browser.
-
-## API Endpoints
-
-- `/login`: User login
-- `/register`: User registration
-- `/logout`: User logout
-- `/status`: Get server status
-- `/password`: Change password
-- `/external`: Execute external requests
-- `/validate-session`: Validate sessions
-
-## Dependencies
-
-- g++
-- Boost 1.85.0
-- Web browser
-
-## Usage
-
-- Navigate to the login page.
-- Register a new account or log in with existing credentials.
-- Access the dashboard to view server status or change your password.
-
----
-
-## Screenshots
-Ticket demo
-- ![](images/1.png)
-- check images
+Удачи, и храни тебя Господь.
